@@ -1,0 +1,1996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WordNest — your dictionary, your desk</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#A93226">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,800&family=Caveat:wght@600;700&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --cream: #F4EEDF;
+    --paper: #EBE0C6;
+    --paper-dark: #DED0AC;
+    --red: #A93226;
+    --red-dark: #7E241A;
+    --ink: #2B2317;
+    --gold: #C8963F;
+    --clip: #4A4438;
+    --green: #4C7A4C;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--cream);
+    background-image:
+      linear-gradient(var(--paper-dark) 1px, transparent 1px),
+      linear-gradient(90deg, var(--paper-dark) 1px, transparent 1px);
+    background-size: 26px 26px;
+    background-position: -1px -1px;
+    font-family: 'Manrope', sans-serif;
+    color: var(--ink);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 26px 18px 90px; }
+
+  /* ---- header ---- */
+  header {
+    background: var(--red);
+    border: 3px solid var(--ink);
+    border-radius: 4px;
+    padding: 18px 22px;
+    margin-bottom: 22px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 5px 5px 0 var(--ink);
+  }
+  header .title-block h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 800;
+    font-size: clamp(24px, 5.5vw, 34px);
+    color: var(--cream);
+    margin: 0;
+    letter-spacing: -0.5px;
+  }
+  header .title-block .tag {
+    font-family: 'Caveat', cursive;
+    font-size: 17px;
+    color: var(--paper);
+    margin-top: 2px;
+  }
+  .fuel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--cream);
+    border: 2px solid var(--ink);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-family: 'Manrope', sans-serif;
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .fuel svg { width: 18px; height: 18px; }
+
+  /* ---- breadcrumb / back ---- */
+  .backbar {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  }
+  .backbar button {
+    font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 13px;
+    background: var(--paper); border: 2px solid var(--ink); border-radius: 8px;
+    padding: 7px 14px; cursor: pointer;
+  }
+  .backbar button:hover { background: var(--paper-dark); }
+  .crumb { font-family: 'Fraunces', serif; font-weight: 700; font-size: 15px; color: var(--red-dark); }
+
+  /* ---- paper card, torn top ---- */
+  .paper-card {
+    position: relative;
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    border-radius: 3px;
+    padding: 26px 22px 22px;
+    margin-bottom: 20px;
+    box-shadow: 6px 6px 0 rgba(43,35,23,0.18);
+  }
+  .paperclip {
+    position: absolute;
+    top: -16px;
+    width: 30px;
+    height: 46px;
+  }
+  .paperclip.left { left: 22px; transform: rotate(-8deg); }
+  .paperclip.right { right: 22px; transform: rotate(7deg); }
+
+  /* ---- home: category folders ---- */
+  .home-title {
+    font-family: 'Fraunces', serif; font-weight: 700; font-size: 20px;
+    margin: 6px 4px 14px; color: var(--ink);
+  }
+  .folder-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 480px) { .folder-grid { grid-template-columns: 1fr; } }
+  .folder-card {
+    cursor: pointer;
+    border: 3px solid var(--ink);
+    border-radius: 4px 14px 4px 4px;
+    padding: 18px 16px 16px;
+    position: relative;
+    overflow: hidden;
+    min-height: 128px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    box-shadow: 5px 5px 0 rgba(43,35,23,0.2);
+    transition: transform 0.12s ease;
+  }
+  .folder-card:hover { transform: translateY(-3px); }
+  .folder-card .fc-tab {
+    position: absolute; top: 0; left: 16px;
+    width: 46px; height: 12px;
+    background: inherit;
+    border: 3px solid var(--ink);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    transform: translateY(-100%);
+  }
+  .folder-card .fc-icon { font-size: 26px; margin-bottom: 6px; }
+  .folder-card .fc-name {
+    font-family: 'Fraunces', serif; font-weight: 700; font-size: 17px;
+    position: relative; z-index: 1;
+  }
+  .folder-card .fc-sub {
+    font-family: 'Manrope', sans-serif; font-size: 12.5px; font-weight: 600;
+    position: relative; z-index: 1; margin-top: 2px; opacity: 0.85;
+  }
+  .fc-1 { background: #F1D9A8; }
+  .fc-2 { background: #D9C7E8; }
+  .fc-3 { background: #C9DFC3; }
+  .fc-4 { background: #EAB8A8; }
+
+  /* ---- forms ---- */
+  .field-label {
+    font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 12.5px;
+    text-transform: none; color: var(--red-dark); margin-bottom: 6px; display: block;
+  }
+  input, textarea, select {
+    font-family: 'Manrope', sans-serif; font-size: 15px;
+    padding: 11px 13px; border: 2px solid var(--clip); border-radius: 8px;
+    background: var(--cream); width: 100%; outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--red); }
+  .stack { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+  .btn {
+    font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 14px;
+    border: 2.5px solid var(--ink); border-radius: 8px; padding: 11px 18px;
+    cursor: pointer; background: var(--gold); color: var(--ink);
+  }
+  .btn:hover { filter: brightness(1.05); }
+  .btn.ghost { background: var(--cream); }
+  .btn.red { background: var(--red); color: var(--cream); }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* ---- word list ---- */
+  .word-row {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--cream); border: 2px solid var(--paper-dark); border-radius: 8px;
+    padding: 11px 14px; margin-bottom: 8px;
+  }
+  .word-row .term { font-family: 'Fraunces', serif; font-weight: 700; font-size: 15px; }
+  .word-row .def { font-size: 12.5px; color: #6b5a3a; margin-top: 1px; }
+  .word-row .topic-badge {
+    display: inline-block; font-size: 10.5px; font-weight: 800; padding: 2px 8px;
+    border-radius: 999px; background: var(--paper-dark); margin-top: 4px; color: var(--red-dark);
+  }
+  .word-row button.remove { background: none; border: none; color: var(--red); font-size: 17px; cursor: pointer; }
+  .empty { text-align: center; padding: 26px 10px; color: #927e52; font-size: 13.5px; font-family: 'Caveat', cursive; font-size: 20px; }
+
+  /* ---- topic detail ---- */
+  .topic-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+  }
+  .topic-header h2 { font-family: 'Fraunces', serif; margin: 0; font-size: 22px; }
+
+  /* ---- game session ---- */
+  .session-bar {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+    font-family: 'Manrope', sans-serif; font-size: 12.5px; font-weight: 800; color: var(--red-dark);
+  }
+  .flip-card { perspective: 1000px; height: 210px; cursor: pointer; margin-bottom: 18px; }
+  .flip-inner { position: relative; width: 100%; height: 100%; transition: transform 0.5s; transform-style: preserve-3d; }
+  .flip-card.flipped .flip-inner { transform: rotateY(180deg); }
+  .flip-face {
+    position: absolute; width: 100%; height: 100%; backface-visibility: hidden;
+    border-radius: 6px; border: 3px solid var(--ink);
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    text-align: center; padding: 20px;
+  }
+  .flip-front { background: var(--red); color: var(--cream); font-family: 'Fraunces', serif; font-weight: 700; font-size: 25px; }
+  .flip-back { background: var(--paper); color: var(--ink); transform: rotateY(180deg); font-size: 17px; font-weight: 600; }
+  .flip-hint { font-size: 12px; opacity: 0.8; margin-top: 10px; font-family: 'Caveat', cursive; font-weight: 700; font-size: 16px; }
+  .game-controls { display: flex; gap: 10px; justify-content: center; }
+  .game-controls button {
+    font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 13px;
+    border: 2.5px solid var(--ink); border-radius: 999px; padding: 10px 20px; cursor: pointer;
+  }
+  .btn-again { background: var(--cream); }
+  .btn-know { background: var(--gold); }
+
+  .mc-question { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 16px; color: var(--red-dark); }
+  .mc-options { display: flex; flex-direction: column; gap: 9px; }
+  .mc-option {
+    font-size: 14.5px; font-weight: 600; background: var(--cream);
+    border: 2.5px solid var(--paper-dark); border-radius: 8px; padding: 13px; cursor: pointer; text-align: left;
+  }
+  .mc-option:hover { border-color: var(--red); }
+  .mc-option.correct { background: #d7ecd2; border-color: var(--green); }
+  .mc-option.wrong { background: #f0d3ce; border-color: var(--red); }
+
+  .feedback { text-align: center; font-family: 'Caveat', cursive; font-size: 24px; color: var(--red-dark); min-height: 30px; }
+  .session-done { text-align: center; padding: 24px 10px; }
+  .session-done h2 { font-family: 'Fraunces', serif; color: var(--red-dark); }
+
+  .loading { text-align: center; padding: 20px; color: #927e52; font-family: 'Caveat', cursive; font-size: 20px; }
+  .coffee-icon { flex-shrink: 0; }
+
+  /* ---- login screen ---- */
+  .login-wrap { max-width: 380px; margin: 60px auto; text-align: center; }
+  .login-wrap h1 { font-family: 'Fraunces', serif; font-size: 32px; color: var(--red-dark); margin-bottom: 4px; }
+  .login-wrap .tag { font-family: 'Caveat', cursive; font-size: 18px; color: #7a6640; margin-bottom: 24px; }
+  .login-wrap input { text-align: center; margin-bottom: 12px; }
+  .signout-btn {
+    font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 12px;
+    background: none; border: 2px solid var(--ink); border-radius: 999px;
+    padding: 5px 12px; cursor: pointer; color: var(--ink);
+  }
+  .lang-toggle { display: flex; gap: 4px; }
+  .lang-btn {
+    font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 11px;
+    background: var(--cream); border: 2px solid var(--ink); border-radius: 999px;
+    padding: 4px 9px; cursor: pointer; color: var(--ink); opacity: 0.6;
+  }
+  .lang-btn.active { opacity: 1; background: var(--gold); }
+
+  /* ---- mode picker ---- */
+  .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  @media (max-width: 480px) { .mode-grid { grid-template-columns: 1fr; } }
+  .mode-btn {
+    font-family: 'Manrope', sans-serif; text-align: left; cursor: pointer;
+    background: var(--cream); border: 2.5px solid var(--ink); border-radius: 10px;
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;
+  }
+  .mode-btn:hover { background: var(--paper-dark); }
+  .mode-btn .mode-emoji { font-size: 20px; }
+  .mode-btn .mode-name { font-family: 'Fraunces', serif; font-weight: 700; font-size: 14.5px; }
+  .mode-btn .mode-note { font-size: 11.5px; color: #7a6640; font-weight: 600; }
+  .mode-btn.adhd { border-color: var(--red); }
+  .mode-btn.adhd .mode-note { color: var(--red-dark); }
+
+  /* ---- typing practice ---- */
+  #type-input { margin: 14px 0 6px; text-align: center; font-size: 17px; font-weight: 700; }
+
+  /* ---- speed round timer ---- */
+  .timer-track {
+    height: 8px; background: var(--paper-dark); border-radius: 999px; overflow: hidden;
+    border: 2px solid var(--ink); margin-bottom: 14px;
+  }
+  .timer-fill { height: 100%; background: var(--red); width: 100%; transition: width 0.1s linear; }
+
+  /* ---- match game ---- */
+  .match-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .match-card {
+    min-height: 76px; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 8px; font-size: 12.5px; font-weight: 700;
+    background: var(--cream); border: 2.5px solid var(--paper-dark); border-radius: 8px;
+    cursor: pointer; line-height: 1.25;
+  }
+  .match-card.selected { border-color: var(--gold); background: #fdf1d6; }
+  .match-card.wrong { border-color: var(--red); background: #f0d3ce; }
+  .match-card.matched { background: transparent; border-color: transparent; cursor: default; opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header id="app-header" style="display:none;">
+    <div class="title-block">
+      <h1>WordNest</h1>
+      <div class="tag js-app-tag">a desk for your words</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div id="header-lang-toggle"></div>
+      <button id="focus-sound-btn" onclick="toggleFocusSound()" title="focus white noise" style="cursor:pointer; background:var(--cream); border:2px solid var(--ink); border-radius:999px; width:36px; height:36px; font-size:16px; display:flex; align-items:center; justify-content:center;">🎧</button>
+      <div class="fuel">
+        <svg class="coffee-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 9h13a3 3 0 0 1 0 6h-1"/><path d="M4 9v7a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9"/><path d="M8 3c0 1-1 1-1 2s1 1 1 2"/><path d="M12 3c0 1-1 1-1 2s1 1 1 2"/>
+        </svg>
+        <span id="streak-display">0</span>
+      </div>
+      <button class="signout-btn" onclick="signOut()"><span id="signout-label">sign out</span></button>
+    </div>
+  </header>
+
+  <div id="app"></div>
+</div>
+
+<script>
+// ============================================================
+// SUPABASE CONFIG — fill these in after creating your project
+// Project Settings → API → Project URL / anon public key
+// ============================================================
+const SUPABASE_URL = 'https://fbonxvyuwexztzdfstrc.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_klbS94A3MUv7t0RzZ5miBg_vgLGd5eC';
+const SUPABASE_CONFIGURED = SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
+let sb = null;
+if (SUPABASE_CONFIGURED) {
+  try { sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+  catch (e) { console.error('Supabase client failed to initialize', e); }
+}
+
+/* ============================================================
+   LANGUAGE / TRANSLATIONS
+   ============================================================ */
+let currentLang = (function(){
+  try { return localStorage.getItem('wordnest_lang') || 'en'; } catch(e) { return 'en'; }
+})();
+
+const STRINGS = {
+  en: {
+    'app.tag': 'a desk for your words',
+    'app.signout': 'sign out',
+    'app.loading': 'unpacking your desk...',
+    'login.tag': 'a desk for your words',
+    'login.checkInboxTag': 'check your inbox',
+    'login.magicLinkSent': 'Magic link sent to',
+    'login.magicLinkSentRest': '. Click it to sign in — this tab will pick it up automatically.',
+    'login.useDifferentEmail': 'use a different email',
+    'login.signInWithEmail': 'sign in with email',
+    'login.emailPlaceholder': 'you@email.com',
+    'login.sendMagicLink': 'send magic link',
+    'login.noPassword': "no password needed — we'll email you a link",
+    'login.enterEmailFirst': 'enter an email first',
+    'login.couldNotSend': 'could not send link — try again',
+    'setup.tag': 'almost there',
+    'setup.body': 'This copy isn\'t connected to a database yet. Open <code>index.html</code> and paste your Supabase Project URL and anon key into the two placeholder lines near the top of the script — see <strong>README.md</strong> for the full walkthrough.',
+    'home.create.title': 'Create a Set',
+    'home.create.sub': 'build & study fresh flashcards',
+    'home.dictionary.title': 'Dictionary',
+    'home.dictionary.sub': "every word you've ever added",
+    'home.topics.title': 'Topics',
+    'home.topics.sub': 'browse sets by folder',
+    'home.hyperfocus.title': 'Hyperfocus Mode',
+    'home.hyperfocus.sub': 'everything, endlessly',
+    'home.insights.title': 'My Progress',
+    'home.insights.sub': 'streaks, mood, mode stats',
+    'create.setName': 'set / topic name',
+    'create.newSetOption': '— new set —',
+    'create.newSetPlaceholder': "name your new set, e.g. 'Medical English — Unit 3'",
+    'create.addWord': 'add a word to this set',
+    'create.termPlaceholder': 'word or phrase',
+    'create.defPlaceholder': 'definition, translation, or your own note',
+    'create.addWordBtn': '+ add word',
+    'create.dualCoding': '🧠 dual coding: pairing a word with an emoji or picture makes it stick in memory noticeably better than text alone — pick whichever fits',
+    'create.empty': 'words you add will collect here ✎',
+    'create.startStudying': 'start studying this set →',
+    'create.giveNameAlert': 'Give your new set a name first!',
+    'create.addWordFirstAlert': 'Add at least one word first!',
+    'create.removeImg': 'remove',
+    'dict.empty': 'no words yet — go create a set first ✎',
+    'dict.wordsTotal': 'words total',
+    'topics.empty': 'no sets yet — create one first ✎',
+    'topics.word': 'word',
+    'topics.words': 'words',
+    'topicDetail.fallbackName': 'Set',
+    'topicDetail.study': 'study this set →',
+    'topicDetail.empty': 'no words in this set yet',
+    'picker.needFour': 'Need at least 4 words in this set for that mode!',
+    'picker.empty': 'This set is empty!',
+    'mode.flip.name': 'Flip Cards',
+    'mode.flip.note': 'classic front / back',
+    'mode.mc.name': 'Multiple Choice',
+    'mode.mc.note': 'pick the right meaning',
+    'mode.type.name': 'Typing Practice',
+    'mode.type.note': 'active recall',
+    'mode.speed.name': 'Speed Round',
+    'mode.speed.note': '🧠 timed, fast feedback',
+    'mode.match.name': 'Match Game',
+    'mode.match.note': '🧠 novelty + movement',
+    'mode.test.name': 'Test Mode',
+    'mode.test.note': '🧠 mixed formats, both directions',
+    'picker.hyperfocusNote': 'hyperfocus mode — loops endlessly through everything. stop anytime with the flag button.',
+    'picker.normalNote1': "you'll go through all",
+    'picker.normalNote2': 'word',
+    'picker.normalNote3': 'in this set (match game deals them out in batches of 6).',
+    'session.card': 'card',
+    'session.question': 'question',
+    'session.round': 'round',
+    'session.tapToFlip': 'tap to flip',
+    'session.stillLearning': '🔁 still learning',
+    'session.gotIt': '✅ got it',
+    'session.doneForNow': '🏁 done for now',
+    'session.chooseDefinition': 'choose the definition',
+    'session.chooseWord': 'choose the word',
+    'session.typeTheWord': 'type the word',
+    'session.typeTheWordPlaceholder': 'type the word...',
+    'session.check': 'check',
+    'session.next': 'next →',
+    'session.exactlyRight': 'exactly right! ✅',
+    'session.closeItWas': 'close — it was',
+    'match.batchCleared': 'batch cleared! 🎉',
+    'match.leftInSet': 'left in this set',
+    'match.nextBatch': '▶ next batch',
+    'match.stopHere': 'stop here',
+    'match.allMatched': 'all matched! 🎉',
+    'match.clearedAll': 'cleared all',
+    'match.mismatchTotal': 'mismatch total',
+    'match.mismatchesTotal': 'mismatches total',
+    'match.back': '← back',
+    'match.playAgain': '🔁 play again',
+    'match.batch': 'batch',
+    'match.matched': 'matched',
+    'done.roundComplete': 'round complete 🎉',
+    'done.correct': 'correct',
+    'done.loopThrough': 'loop through',
+    'done.loopsThrough': 'loops through',
+    'done.feedbackHigh': "you're on fire — keep going!",
+    'done.feedbackMid': 'solid round. another?',
+    'done.feedbackLow': "that's exactly what practice is for.",
+    'done.reviewMistake': '✎ review',
+    'done.mistake': 'mistake',
+    'done.mistakes': 'mistakes',
+    'break.title': 'quick check-in 🌿',
+    'break.body': "a few in a row didn't land — that's completely normal.",
+    'break.keepGoing': 'keep going',
+    'break.takeBreak': 'take a short break',
+    'mood.question': 'how do you feel right now?',
+    'mood.energized': '⚡ energized',
+    'mood.neutral': '😐 neutral',
+    'mood.tired': '😴 tired',
+    'mood.irritated': '😤 irritated',
+    'mood.thanks': 'thanks — logged 🌱',
+    'insights.calendar': 'streak calendar — last 5 weeks',
+    'insights.moodFeel': 'how sessions have felt',
+    'insights.noCheckins': 'no check-ins yet',
+    'insights.bestDay': 'you tend to score best on',
+    'insights.bestDayAvg': 'avg',
+    'insights.needMoreData': "a few more sessions and I'll spot your patterns",
+    'insights.accuracyByMode': 'accuracy by mode',
+    'insights.noStats': 'play a few rounds and log how you felt — stats show up here',
+    'weekday.0': 'Sunday', 'weekday.1': 'Monday', 'weekday.2': 'Tuesday', 'weekday.3': 'Wednesday',
+    'weekday.4': 'Thursday', 'weekday.5': 'Friday', 'weekday.6': 'Saturday',
+    'nav.back': '← back',
+    'nav.home': '🏠 home',
+    'focusSound.title': 'toggle focus white noise',
+  },
+  ru: {
+    'app.tag': 'уголок для твоих слов',
+    'app.signout': 'выйти',
+    'app.loading': 'разбираем твой стол...',
+    'login.tag': 'уголок для твоих слов',
+    'login.checkInboxTag': 'проверь почту',
+    'login.magicLinkSent': 'Ссылка отправлена на',
+    'login.magicLinkSentRest': '. Перейди по ней, чтобы войти — эта вкладка подхватит вход автоматически.',
+    'login.useDifferentEmail': 'использовать другой email',
+    'login.signInWithEmail': 'вход по email',
+    'login.emailPlaceholder': 'you@email.com',
+    'login.sendMagicLink': 'отправить ссылку для входа',
+    'login.noPassword': 'пароль не нужен — пришлём ссылку на почту',
+    'login.enterEmailFirst': 'сначала введи email',
+    'login.couldNotSend': 'не получилось отправить — попробуй ещё раз',
+    'setup.tag': 'почти готово',
+    'setup.body': 'Эта копия ещё не подключена к базе данных. Открой <code>index.html</code> и вставь Project URL и anon key от Supabase в две строки-заглушки в начале скрипта — подробности в <strong>README.md</strong>.',
+    'home.create.title': 'Создать набор',
+    'home.create.sub': 'создай и учи новые карточки',
+    'home.dictionary.title': 'Словарь',
+    'home.dictionary.sub': 'все слова, что ты добавила',
+    'home.topics.title': 'Темы',
+    'home.topics.sub': 'наборы по папкам',
+    'home.hyperfocus.title': 'Режим гиперфокуса',
+    'home.hyperfocus.sub': 'всё и без конца',
+    'home.insights.title': 'Мой прогресс',
+    'home.insights.sub': 'стрики, настроение, статистика',
+    'create.setName': 'название набора / темы',
+    'create.newSetOption': '— новый набор —',
+    'create.newSetPlaceholder': 'назови новый набор, напр. «Медицинский английский — Юнит 3»',
+    'create.addWord': 'добавить слово в набор',
+    'create.termPlaceholder': 'слово или фраза',
+    'create.defPlaceholder': 'определение, перевод или своя заметка',
+    'create.addWordBtn': '+ добавить слово',
+    'create.dualCoding': '🧠 двойное кодирование: слово + эмодзи или картинка запоминается заметно лучше, чем просто текст — выбирай, что подходит',
+    'create.empty': 'добавленные слова появятся здесь ✎',
+    'create.startStudying': 'начать изучение набора →',
+    'create.giveNameAlert': 'Сначала дай название новому набору!',
+    'create.addWordFirstAlert': 'Сначала добавь хотя бы одно слово!',
+    'create.removeImg': 'убрать',
+    'dict.empty': 'слов пока нет — сначала создай набор ✎',
+    'dict.wordsTotal': 'слов всего',
+    'topics.empty': 'наборов пока нет — сначала создай один ✎',
+    'topics.word': 'слово',
+    'topics.words': 'слов',
+    'topicDetail.fallbackName': 'Набор',
+    'topicDetail.study': 'изучать этот набор →',
+    'topicDetail.empty': 'в этом наборе пока нет слов',
+    'picker.needFour': 'Для этого режима нужно минимум 4 слова в наборе!',
+    'picker.empty': 'Этот набор пуст!',
+    'mode.flip.name': 'Карточки',
+    'mode.flip.note': 'классика: вопрос / ответ',
+    'mode.mc.name': 'Выбор варианта',
+    'mode.mc.note': 'выбери верное значение',
+    'mode.type.name': 'Печать по памяти',
+    'mode.type.note': 'активное вспоминание',
+    'mode.speed.name': 'На скорость',
+    'mode.speed.note': '🧠 на время, быстрый отклик',
+    'mode.match.name': 'Найди пару',
+    'mode.match.note': '🧠 новизна + движение',
+    'mode.test.name': 'Режим теста',
+    'mode.test.note': '🧠 смешанные форматы, оба направления',
+    'picker.hyperfocusNote': 'режим гиперфокуса — бесконечно проходит всё подряд. останови в любой момент кнопкой с флагом.',
+    'picker.normalNote1': 'ты пройдёшь все',
+    'picker.normalNote2': 'слов',
+    'picker.normalNote3': 'из этого набора (в «найди пару» слова выдаются пачками по 6).',
+    'session.card': 'карточка',
+    'session.question': 'вопрос',
+    'session.round': 'круг',
+    'session.tapToFlip': 'нажми, чтобы перевернуть',
+    'session.stillLearning': '🔁 ещё учу',
+    'session.gotIt': '✅ знаю',
+    'session.doneForNow': '🏁 хватит на сегодня',
+    'session.chooseDefinition': 'выбери определение',
+    'session.chooseWord': 'выбери слово',
+    'session.typeTheWord': 'напечатай слово',
+    'session.typeTheWordPlaceholder': 'напечатай слово...',
+    'session.check': 'проверить',
+    'session.next': 'дальше →',
+    'session.exactlyRight': 'точно верно! ✅',
+    'session.closeItWas': 'почти — правильно было',
+    'match.batchCleared': 'пачка пройдена! 🎉',
+    'match.leftInSet': 'слов осталось в наборе',
+    'match.nextBatch': '▶ следующая пачка',
+    'match.stopHere': 'остановиться здесь',
+    'match.allMatched': 'все пары найдены! 🎉',
+    'match.clearedAll': 'пройдено всего слов:',
+    'match.mismatchTotal': 'несовпадение всего',
+    'match.mismatchesTotal': 'несовпадений всего',
+    'match.back': '← назад',
+    'match.playAgain': '🔁 сыграть ещё',
+    'match.batch': 'пачка',
+    'match.matched': 'найдено пар',
+    'done.roundComplete': 'раунд завершён 🎉',
+    'done.correct': 'верно',
+    'done.loopThrough': 'круг пройден',
+    'done.loopsThrough': 'кругов пройдено',
+    'done.feedbackHigh': 'ты в ударе — продолжай!',
+    'done.feedbackMid': 'хороший раунд. ещё один?',
+    'done.feedbackLow': 'именно для этого и нужна практика.',
+    'done.reviewMistake': '✎ повторить',
+    'done.mistake': 'ошибку',
+    'done.mistakes': 'ошибок',
+    'break.title': 'небольшая пауза 🌿',
+    'break.body': 'несколько ошибок подряд — это совершенно нормально.',
+    'break.keepGoing': 'продолжить',
+    'break.takeBreak': 'сделать паузу',
+    'mood.question': 'как ты себя сейчас чувствуешь?',
+    'mood.energized': '⚡ бодро',
+    'mood.neutral': '😐 нормально',
+    'mood.tired': '😴 устало',
+    'mood.irritated': '😤 раздражённо',
+    'mood.thanks': 'спасибо — записано 🌱',
+    'insights.calendar': 'календарь стрика — последние 5 недель',
+    'insights.moodFeel': 'как проходили занятия',
+    'insights.noCheckins': 'отметок пока нет',
+    'insights.bestDay': 'у тебя лучше всего получается по',
+    'insights.bestDayAvg': 'в среднем',
+    'insights.needMoreData': 'ещё немного занятий — и здесь появятся закономерности',
+    'insights.accuracyByMode': 'точность по режимам',
+    'insights.noStats': 'пройди пару раундов и отметь настроение — тут появится статистика',
+    'weekday.0': 'воскресеньям', 'weekday.1': 'понедельникам', 'weekday.2': 'вторникам', 'weekday.3': 'средам',
+    'weekday.4': 'четвергам', 'weekday.5': 'пятницам', 'weekday.6': 'субботам',
+    'nav.back': '← назад',
+    'nav.home': '🏠 домой',
+    'focusSound.title': 'фоновый белый шум',
+  },
+};
+
+function tr(key) {
+  return (STRINGS[currentLang] && STRINGS[currentLang][key]) || STRINGS.en[key] || key;
+}
+function setLang(lang) {
+  currentLang = lang;
+  try { localStorage.setItem('wordnest_lang', lang); } catch(e){}
+  applyStaticLang();
+  if (state.authView === 'login' || state.authView === 'sent') { renderLoginScreen(); }
+  else if (state.authView === 'setup') { renderSetupNeeded(); }
+  else if (state.authView === 'app') { render(); }
+}
+function applyStaticLang() {
+  document.documentElement.lang = currentLang;
+  const tagEls = document.querySelectorAll('.js-app-tag');
+  tagEls.forEach(el => el.textContent = tr('app.tag'));
+  const signoutEl = document.getElementById('signout-label');
+  if (signoutEl) signoutEl.textContent = tr('app.signout');
+  const focusBtn = document.getElementById('focus-sound-btn');
+  if (focusBtn) focusBtn.title = tr('focusSound.title');
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.lang === currentLang);
+  });
+}
+function langToggleHtml() {
+  return `<div class="lang-toggle">
+    <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+    <button class="lang-btn" data-lang="ru" onclick="setLang('ru')">RU</button>
+  </div>`;
+}
+
+const state = {
+  view: 'home', // home | create | dictionary | topics | topicDetail | hyperfocus | session | insights
+  words: [],
+  topics: [],
+  loaded: false,
+  streak: 0,
+  activeTopicId: null,
+  session: null,
+  createDraftTopicId: null,
+  createDraftImage: null,
+  pendingInfinite: false,
+  activityDates: [],
+  sessionLog: [],
+  focusSoundOn: false,
+  navStack: [],
+  currentUser: null,
+  authView: 'checking', // checking | login | sent | app
+};
+
+const SESSION_SIZE = 10; // still used to cap the Match Game board only
+
+function paperclipSvg(cls) {
+  return `<svg class="paperclip ${cls}" viewBox="0 0 30 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 6C8 3 10.5 1 13.5 1C16.5 1 19 3 19 6V32C19 33.6 17.6 35 16 35C14.4 35 13 33.6 13 32V12C13 11.4 13.4 11 14 11C14.6 11 15 11.4 15 12V29" stroke="#4A4438" stroke-width="2.4" stroke-linecap="round"/>
+  </svg>`;
+}
+
+/* ---------- AUTH ---------- */
+function renderLoginScreen() {
+  const app = document.getElementById('app');
+  document.getElementById('app-header').style.display = 'none';
+  const langRow = `<div style="display:flex; justify-content:center; margin-bottom:14px;">${langToggleHtml()}</div>`;
+  if (state.authView === 'sent') {
+    app.innerHTML = `
+      <div class="login-wrap">
+        ${langRow}
+        <h1>WordNest</h1>
+        <div class="tag">${tr('login.checkInboxTag')}</div>
+        <div class="paper-card">
+          <p style="font-size:15px;">${tr('login.magicLinkSent')} <strong>${esc(state.pendingEmail || '')}</strong>${tr('login.magicLinkSentRest')}</p>
+          <button class="btn ghost" style="margin-top:10px;" onclick="state.authView='login'; renderLoginScreen();">${tr('login.useDifferentEmail')}</button>
+        </div>
+      </div>`;
+    applyStaticLang();
+    return;
+  }
+  app.innerHTML = `
+    <div class="login-wrap">
+      ${langRow}
+      <h1>WordNest</h1>
+      <div class="tag">${tr('login.tag')}</div>
+      <div class="paper-card">
+        <span class="field-label">${tr('login.signInWithEmail')}</span>
+        <div class="stack">
+          <input id="login-email" type="email" placeholder="${tr('login.emailPlaceholder')}" onkeydown="if(event.key==='Enter') sendMagicLink()" />
+          <button class="btn red" onclick="sendMagicLink()">${tr('login.sendMagicLink')}</button>
+        </div>
+        <p style="font-family:'Caveat',cursive; font-size:16px; color:#7a6640; margin:10px 0 0;">${tr('login.noPassword')}</p>
+      </div>
+      <div id="login-error" style="color:var(--red); font-size:13px; margin-top:8px;"></div>
+    </div>`;
+  applyStaticLang();
+}
+async function sendMagicLink() {
+  const email = document.getElementById('login-email').value.trim();
+  const errEl = document.getElementById('login-error');
+  if (!email) { if (errEl) errEl.textContent = tr('login.enterEmailFirst'); return; }
+  try {
+    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+    if (error) { if (errEl) errEl.textContent = error.message; return; }
+    state.pendingEmail = email;
+    state.authView = 'sent';
+    renderLoginScreen();
+  } catch (e) {
+    if (errEl) errEl.textContent = tr('login.couldNotSend');
+  }
+}
+async function signOut() {
+  clearSpeedTimer();
+  stopFocusSound();
+  try { await sb.auth.signOut(); } catch(e){}
+  state.currentUser = null;
+  state.authView = 'login';
+  state.words = []; state.topics = []; state.sessionLog = []; state.activityDates = [];
+  state.streak = 0; state.view = 'home'; state.navStack = [];
+  renderLoginScreen();
+}
+
+function renderSetupNeeded() {
+  document.getElementById('app-header').style.display = 'none';
+  document.getElementById('app').innerHTML = `
+    <div class="login-wrap">
+      <div style="display:flex; justify-content:center; margin-bottom:14px;">${langToggleHtml()}</div>
+      <h1>WordNest</h1>
+      <div class="tag">${tr('setup.tag')}</div>
+      <div class="paper-card">
+        <p style="font-size:15px;">${tr('setup.body')}</p>
+      </div>
+    </div>`;
+  applyStaticLang();
+}
+
+async function initAuth() {
+  if (!SUPABASE_CONFIGURED || !sb) { state.authView = 'setup'; renderSetupNeeded(); return; }
+  const { data: { session } } = await sb.auth.getSession();
+  if (session && session.user) {
+    state.currentUser = session.user;
+    state.authView = 'app';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('header-lang-toggle').innerHTML = langToggleHtml();
+    applyStaticLang();
+    await loadAll();
+  } else {
+    state.authView = 'login';
+    renderLoginScreen();
+  }
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session && session.user) {
+      state.currentUser = session.user;
+      state.authView = 'app';
+      document.getElementById('app-header').style.display = 'flex';
+      document.getElementById('header-lang-toggle').innerHTML = langToggleHtml();
+      applyStaticLang();
+      await loadAll();
+    } else if (event === 'SIGNED_OUT') {
+      state.currentUser = null;
+      state.authView = 'login';
+      renderLoginScreen();
+    }
+  });
+}
+
+/* ---------- DATA MAPPING (local camelCase <-> db snake_case) ---------- */
+function wordToRow(w) {
+  return { id: w.id, user_id: state.currentUser.id, topic_id: w.topicId || null, term: w.term, def: w.def, emoji: w.emoji || null, image: w.image || null, mastery: w.mastery || 0 };
+}
+function rowToWord(r) {
+  return { id: r.id, term: r.term, def: r.def, emoji: r.emoji || '', image: r.image || null, topicId: r.topic_id, mastery: r.mastery || 0 };
+}
+function topicToRow(t) {
+  return { id: t.id, user_id: state.currentUser.id, name: t.name };
+}
+function rowToTopic(r) {
+  return { id: r.id, name: r.name };
+}
+
+async function loadAll() {
+  try {
+    const { data, error } = await sb.from('topics').select('*').order('created_at');
+    state.topics = error || !data ? [] : data.map(rowToTopic);
+  } catch(e) { state.topics = []; }
+  try {
+    const { data, error } = await sb.from('words').select('*').order('created_at', { ascending: false });
+    state.words = error || !data ? [] : data.map(rowToWord);
+  } catch(e) { state.words = []; }
+  try {
+    const { data, error } = await sb.from('user_stats').select('*').eq('user_id', state.currentUser.id).maybeSingle();
+    state.streak = (!error && data) ? (data.streak || 0) : 0;
+  } catch(e) { state.streak = 0; }
+  try {
+    const { data, error } = await sb.from('activity_dates').select('date');
+    state.activityDates = error || !data ? [] : data.map(r => r.date);
+  } catch(e) { state.activityDates = []; }
+  try {
+    const { data, error } = await sb.from('session_log').select('*');
+    state.sessionLog = error || !data ? [] : data.map(r => ({ date: r.date, mode: r.mode, mood: r.mood, correct: r.correct, total: r.total }));
+  } catch(e) { state.sessionLog = []; }
+  state.loaded = true;
+
+  if (state.words.length === 0 && state.topics.length === 0) {
+    const t1 = uid();
+    const seedTopic = { id: t1, name: 'Study Habits' };
+    const seedWords = [
+      { id: uid(), term: 'hyperfocus', def: 'a state of intense, absorbed concentration on one thing', topicId: t1, mastery: 0 },
+      { id: uid(), term: 'chunking', def: 'grouping information into smaller units to make it easier to remember', topicId: t1, mastery: 0 },
+    ];
+    state.topics = [seedTopic];
+    state.words = seedWords;
+    try { await sb.from('topics').insert(topicToRow(seedTopic)); } catch(e){}
+    try { await sb.from('words').insert(seedWords.map(wordToRow)); } catch(e){}
+  }
+  render();
+}
+
+function uid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  // fallback for very old browsers
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function visualAnchor(w, size) {
+  if (w.image) return `<img src="${w.image}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:8px;border:2px solid var(--ink);vertical-align:middle;margin-right:7px;" />`;
+  if (w.emoji) return `<span style="margin-right:6px;">${esc(w.emoji)}</span>`;
+  return '';
+}
+function flipAnchorHtml(w) {
+  if (w.image) return `<img src="${w.image}" style="width:64px;height:64px;object-fit:cover;border-radius:10px;border:2px solid var(--cream);margin-bottom:6px;" />`;
+  if (w.emoji) return `<div style="font-size:32px;margin-bottom:6px;">${esc(w.emoji)}</div>`;
+  return '';
+}
+
+function handleImageSelect(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 160;
+      let w = img.width, h = img.height;
+      if (w > h && w > maxDim) { h = Math.round(h * (maxDim / w)); w = maxDim; }
+      else if (h >= w && h > maxDim) { w = Math.round(w * (maxDim / h)); h = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      state.createDraftImage = dataUrl;
+      const preview = document.getElementById('image-preview');
+      if (preview) {
+        preview.innerHTML = `<img src="${dataUrl}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:2px solid var(--ink);" /><button type="button" onclick="clearDraftImage()" style="background:none;border:none;color:var(--red);font-weight:800;font-size:12px;cursor:pointer;">${tr('create.removeImg')}</button>`;
+      }
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function clearDraftImage() {
+  state.createDraftImage = null;
+  const preview = document.getElementById('image-preview');
+  if (preview) preview.innerHTML = '';
+  const input = document.getElementById('create-image');
+  if (input) input.value = '';
+}
+
+async function saveStreak() { try { await sb.from('user_stats').upsert({ user_id: state.currentUser.id, streak: state.streak }); } catch(e){} }
+async function insertWordDb(w) { try { await sb.from('words').insert(wordToRow(w)); } catch(e){ console.error('insert word failed', e); } }
+async function deleteWordDb(id) { try { await sb.from('words').delete().eq('id', id); } catch(e){ console.error('delete word failed', e); } }
+async function updateWordMasteryDb(target) { if (!target) return; try { await sb.from('words').update({ mastery: target.mastery }).eq('id', target.id); } catch(e){ console.error('update mastery failed', e); } }
+async function insertTopicDb(t) { try { await sb.from('topics').insert(topicToRow(t)); } catch(e){ console.error('insert topic failed', e); } }
+async function insertActivityDateDb(d) { try { await sb.from('activity_dates').upsert({ user_id: state.currentUser.id, date: d }, { onConflict: 'user_id,date', ignoreDuplicates: true }); } catch(e){ console.error('insert activity failed', e); } }
+async function insertSessionLogDb(entry) { try { await sb.from('session_log').insert({ user_id: state.currentUser.id, date: entry.date, mode: entry.mode, mood: entry.mood, correct: entry.correct, total: entry.total }); } catch(e){ console.error('insert session log failed', e); } }
+function todayStr() { return new Date().toISOString().slice(0,10); }
+function recordActivityToday() {
+  const d = todayStr();
+  if (!state.activityDates.includes(d)) { state.activityDates.push(d); insertActivityDateDb(d); }
+}
+function noteWrong(s) {
+  s.consecutiveMistakes = (s.consecutiveMistakes || 0) + 1;
+  if (s.consecutiveMistakes >= 3 && !s.showBreakPrompt) s.showBreakPrompt = true;
+}
+function noteCorrect(s) {
+  s.consecutiveMistakes = 0;
+}
+function renderBreakPrompt() {
+  return `
+    <div class="paper-card session-done">
+      <h2>${tr('break.title')}</h2>
+      <p class="feedback">${tr('break.body')}</p>
+      <div class="game-controls" style="margin-top:14px; flex-wrap:wrap;">
+        <button class="btn-again" onclick="dismissBreakPrompt()">${tr('break.keepGoing')}</button>
+        <button class="btn red" style="border-radius:999px; padding:10px 20px;" onclick="takeBreak()">${tr('break.takeBreak')}</button>
+      </div>
+    </div>`;
+}
+function dismissBreakPrompt() {
+  const s = state.session;
+  if (!s) return;
+  s.showBreakPrompt = false;
+  s.consecutiveMistakes = 0;
+  render();
+  if (s.mode === 'speed') startSpeedTimer();
+}
+function takeBreak() {
+  clearSpeedTimer();
+  goto('home');
+}
+function logMood(mood) {
+  const s = state.session;
+  if (!s || s.moodLogged) return;
+  s.moodLogged = true;
+  const total = s.totalAnswered || 0;
+  const entry = { date: todayStr(), mode: s.mode, mood, correct: s.correct || 0, total };
+  state.sessionLog.push(entry);
+  insertSessionLogDb(entry);
+  render();
+}
+function renderMoodPicker(s) {
+  if (s.moodLogged) return `<p class="feedback">${tr('mood.thanks')}</p>`;
+  return `
+    <div style="margin-top:14px;">
+      <p class="field-label" style="text-align:center;">${tr('mood.question')}</p>
+      <div class="btn-row" style="justify-content:center; flex-wrap:wrap;">
+        <button class="btn ghost" onclick="logMood('energized')">${tr('mood.energized')}</button>
+        <button class="btn ghost" onclick="logMood('neutral')">${tr('mood.neutral')}</button>
+        <button class="btn ghost" onclick="logMood('tired')">${tr('mood.tired')}</button>
+        <button class="btn ghost" onclick="logMood('irritated')">${tr('mood.irritated')}</button>
+      </div>
+    </div>`;
+}
+
+/* ---------- FOCUS SOUND (self-contained white noise, no external audio) ---------- */
+let noiseCtx = null, noiseSource = null, noiseGain = null;
+function startFocusSound() {
+  try {
+    noiseCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const bufferSize = 2 * noiseCtx.sampleRate;
+    const buffer = noiseCtx.createBuffer(1, bufferSize, noiseCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    noiseSource = noiseCtx.createBufferSource();
+    noiseSource.buffer = buffer;
+    noiseSource.loop = true;
+    noiseGain = noiseCtx.createGain();
+    noiseGain.gain.value = 0.045;
+    noiseSource.connect(noiseGain).connect(noiseCtx.destination);
+    noiseSource.start(0);
+    state.focusSoundOn = true;
+  } catch(e) { console.error('focus sound failed', e); }
+}
+function stopFocusSound() {
+  if (noiseSource) { try { noiseSource.stop(); noiseSource.disconnect(); } catch(e){} noiseSource = null; }
+  if (noiseCtx) { try { noiseCtx.close(); } catch(e){} noiseCtx = null; }
+  state.focusSoundOn = false;
+}
+function toggleFocusSound() {
+  if (noiseSource) stopFocusSound(); else startFocusSound();
+  const btn = document.getElementById('focus-sound-btn');
+  if (btn) btn.style.background = state.focusSoundOn ? 'var(--gold)' : 'var(--cream)';
+}
+function shuffle(arr) { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
+
+function captureContext(view) {
+  if (view === 'topicDetail') return { activeTopicId: state.activeTopicId };
+  if (view === 'gamePicker') return { pendingPool: state.pendingPool, pendingLabel: state.pendingLabel, pendingInfinite: state.pendingInfinite };
+  if (view === 'create') return { createDraftTopicId: state.createDraftTopicId };
+  return {};
+}
+function pushHistoryIfNeeded(newView) {
+  if (state.view !== newView) {
+    state.navStack.push({ view: state.view, ctx: captureContext(state.view) });
+  }
+}
+function goto(view, extra) {
+  clearSpeedTimer();
+  pushHistoryIfNeeded(view);
+  state.view = view;
+  state.session = null;
+  if (extra) Object.assign(state, extra);
+  render();
+}
+function goBack() {
+  clearSpeedTimer();
+  let prev = null;
+  while (state.navStack.length) {
+    const candidate = state.navStack.pop();
+    if (candidate.view !== 'session') { prev = candidate; break; }
+  }
+  state.session = null;
+  if (!prev) { state.view = 'home'; render(); return; }
+  state.view = prev.view;
+  Object.assign(state, prev.ctx);
+  render();
+}
+function resetToHome() {
+  clearSpeedTimer();
+  state.navStack = [];
+  state.view = 'home';
+  state.session = null;
+  render();
+}
+
+/* ---------- CREATE SET ---------- */
+function renderCreate() {
+  const topicOptions = state.topics.map(t => `<option value="${t.id}" ${state.createDraftTopicId===t.id?'selected':''}>${esc(t.name)}</option>`).join('');
+  const draftWords = state.createDraftTopicId ? state.words.filter(w => w.topicId === state.createDraftTopicId) : [];
+  return `
+    <div class="paper-card">
+      ${paperclipSvg('left')}
+      <span class="field-label">${tr('create.setName')}</span>
+      <div class="stack">
+        <div class="btn-row">
+          <select id="topic-select" onchange="onTopicSelectChange(this.value)" style="flex:1;">
+            <option value="">${tr('create.newSetOption')}</option>
+            ${topicOptions}
+          </select>
+        </div>
+        <input id="new-topic-name" placeholder="${tr('create.newSetPlaceholder')}" style="${state.createDraftTopicId ? 'display:none;' : ''}" />
+      </div>
+
+      <span class="field-label">${tr('create.addWord')}</span>
+      <div class="stack">
+        <div class="btn-row">
+          <input id="create-term" placeholder="${tr('create.termPlaceholder')}" style="flex:2;" />
+          <input id="create-emoji" placeholder="🖼️" maxlength="4" style="flex:0 0 60px; text-align:center;" />
+        </div>
+        <textarea id="create-def" rows="2" placeholder="${tr('create.defPlaceholder')}"></textarea>
+        <div class="btn-row" style="align-items:center;">
+          <input id="create-image" type="file" accept="image/*" onchange="handleImageSelect(this)" style="flex:1; font-size:12.5px; padding:8px;" />
+          <div id="image-preview" style="display:flex; align-items:center; gap:6px;"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" onclick="handleCreateAdd()">${tr('create.addWordBtn')}</button>
+        </div>
+      </div>
+      <p style="font-family:'Caveat',cursive; font-size:17px; color:#7a6640; margin:-4px 0 14px;">${tr('create.dualCoding')}</p>
+
+      ${draftWords.length ? `<div class="word-list">` + draftWords.map(w => `
+        <div class="word-row">
+          <div><div class="term">${visualAnchor(w,28)}${esc(w.term)}</div><div class="def">${esc(w.def)}</div></div>
+          <button class="remove" onclick="removeWord('${w.id}')">✕</button>
+        </div>`).join('') + `</div>` : `<div class="empty">${tr('create.empty')}</div>`}
+
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn red" onclick="studyDraftSet()">${tr('create.startStudying')}</button>
+      </div>
+    </div>
+  `;
+}
+
+function onTopicSelectChange(val) {
+  state.createDraftTopicId = val || null;
+  render();
+}
+
+function handleCreateAdd() {
+  const term = document.getElementById('create-term').value.trim();
+  const def = document.getElementById('create-def').value.trim();
+  const emoji = document.getElementById('create-emoji').value.trim();
+  const image = state.createDraftImage || null;
+  if (!term || !def) return;
+  let topicId = state.createDraftTopicId;
+  if (!topicId) {
+    const name = document.getElementById('new-topic-name').value.trim();
+    if (!name) { alert(tr('create.giveNameAlert')); return; }
+    topicId = uid();
+    const newTopic = { id: topicId, name };
+    state.topics.push(newTopic);
+    state.createDraftTopicId = topicId;
+    insertTopicDb(newTopic);
+  }
+  const newWord = { id: uid(), term, def, emoji, image, topicId, mastery: 0 };
+  state.words.unshift(newWord);
+  state.createDraftImage = null;
+  insertWordDb(newWord);
+  render();
+}
+
+function studyDraftSet() {
+  if (!state.createDraftTopicId) { alert(tr('create.addWordFirstAlert')); return; }
+  const pool = state.words.filter(w => w.topicId === state.createDraftTopicId);
+  openGamePicker(pool, state.topics.find(t=>t.id===state.createDraftTopicId)?.name || 'this set');
+}
+
+/* ---------- DICTIONARY ---------- */
+function renderDictionary() {
+  const list = state.words.length === 0
+    ? `<div class="empty">${tr('dict.empty')}</div>`
+    : `<div class="word-list">` + state.words.map(w => {
+        const topic = state.topics.find(t => t.id === w.topicId);
+        return `<div class="word-row">
+          <div>
+            <div class="term">${visualAnchor(w,26)}${esc(w.term)}</div>
+            <div class="def">${esc(w.def)}</div>
+            ${topic ? `<span class="topic-badge">${esc(topic.name)}</span>` : ''}
+          </div>
+          <button class="remove" onclick="removeWord('${w.id}')">✕</button>
+        </div>`;
+      }).join('') + `</div>`;
+  return `<div class="paper-card">${paperclipSvg('right')}
+    <span class="field-label">${state.words.length} ${tr('dict.wordsTotal')}</span>
+    ${list}
+  </div>`;
+}
+
+function removeWord(id) {
+  state.words = state.words.filter(w => w.id !== id);
+  deleteWordDb(id);
+  render();
+}
+
+/* ---------- TOPICS ---------- */
+function renderTopics() {
+  if (state.topics.length === 0) {
+    return `<div class="paper-card"><div class="empty">${tr('topics.empty')}</div></div>`;
+  }
+  const cardClasses = ['fc-1','fc-2','fc-3','fc-4'];
+  const cards = state.topics.map((t, i) => {
+    const count = state.words.filter(w => w.topicId === t.id).length;
+    return `<div class="folder-card ${cardClasses[i % 4]}" onclick="openTopic('${t.id}')">
+      <div class="fc-tab"></div>
+      <div class="fc-icon">📁</div>
+      <div class="fc-name">${esc(t.name)}</div>
+      <div class="fc-sub">${count} ${count===1?tr('topics.word'):tr('topics.words')}</div>
+    </div>`;
+  }).join('');
+  return `<div class="folder-grid">${cards}</div>`;
+}
+
+function openTopic(id) {
+  goto('topicDetail', { activeTopicId: id });
+}
+
+function studyTopicPool() {
+  const t = state.topics.find(x => x.id === state.activeTopicId);
+  const pool = state.words.filter(w => w.topicId === state.activeTopicId);
+  openGamePicker(pool, t ? t.name : tr('topicDetail.fallbackName'));
+}
+
+function renderTopicDetail() {
+  const t = state.topics.find(x => x.id === state.activeTopicId);
+  const pool = state.words.filter(w => w.topicId === state.activeTopicId);
+  return `
+    <div class="paper-card">
+      ${paperclipSvg('left')}
+      <div class="topic-header">
+        <h2>${esc(t ? t.name : tr('topicDetail.fallbackName'))}</h2>
+      </div>
+      <div class="btn-row" style="margin-bottom:16px;">
+        <button class="btn red" onclick="studyTopicPool()">${tr('topicDetail.study')}</button>
+      </div>
+      ${pool.length === 0 ? `<div class="empty">${tr('topicDetail.empty')}</div>` :
+        `<div class="word-list">` + pool.map(w => `
+          <div class="word-row">
+            <div><div class="term">${visualAnchor(w,26)}${esc(w.term)}</div><div class="def">${esc(w.def)}</div></div>
+            <button class="remove" onclick="removeWord('${w.id}')">✕</button>
+          </div>`).join('') + `</div>`}
+    </div>
+  `;
+}
+
+/* ---------- GAME (shared: hyperfocus, topic, create) ---------- */
+function openGamePicker(poolOrIds, label, infinite) {
+  const pool = (poolOrIds.length && typeof poolOrIds[0] === 'string' && state.words.find(w=>w.id===poolOrIds[0]))
+    ? poolOrIds.map(id => state.words.find(w => w.id === id)).filter(Boolean)
+    : poolOrIds;
+  pushHistoryIfNeeded('gamePicker');
+  state.view = 'gamePicker';
+  state.pendingPool = pool;
+  state.pendingLabel = label;
+  state.pendingInfinite = !!infinite;
+  render();
+}
+
+function renderGamePicker() {
+  const pool = state.pendingPool || [];
+  const infinite = state.pendingInfinite;
+  return `
+    <div class="paper-card">
+      <span class="field-label">${esc(state.pendingLabel || '')} — ${pool.length} word${pool.length===1?'':'s'}</span>
+      <div class="mode-grid">
+        <button class="mode-btn" onclick="startSession('flip')">
+          <span class="mode-emoji">🔄</span><span class="mode-name">${tr('mode.flip.name')}</span>
+          <span class="mode-note">${tr('mode.flip.note')}</span>
+        </button>
+        <button class="mode-btn" onclick="startSession('mc')">
+          <span class="mode-emoji">🎯</span><span class="mode-name">${tr('mode.mc.name')}</span>
+          <span class="mode-note">${tr('mode.mc.note')}</span>
+        </button>
+        <button class="mode-btn" onclick="startSession('type')">
+          <span class="mode-emoji">⌨️</span><span class="mode-name">${tr('mode.type.name')}</span>
+          <span class="mode-note">${tr('mode.type.note')}</span>
+        </button>
+        <button class="mode-btn adhd" onclick="startSession('speed')">
+          <span class="mode-emoji">⏱️</span><span class="mode-name">${tr('mode.speed.name')}</span>
+          <span class="mode-note">${tr('mode.speed.note')}</span>
+        </button>
+        <button class="mode-btn adhd" onclick="startSession('match')">
+          <span class="mode-emoji">🧩</span><span class="mode-name">${tr('mode.match.name')}</span>
+          <span class="mode-note">${tr('mode.match.note')}</span>
+        </button>
+        <button class="mode-btn adhd" onclick="startSession('test')">
+          <span class="mode-emoji">🧪</span><span class="mode-name">${tr('mode.test.name')}</span>
+          <span class="mode-note">${tr('mode.test.note')}</span>
+        </button>
+      </div>
+      <p style="font-family:'Caveat',cursive; font-size:18px; color:#7a6640; margin-top:14px;">
+        ${infinite
+          ? tr('picker.hyperfocusNote')
+          : `${tr('picker.normalNote1')} ${pool.length} ${tr('picker.normalNote2')}${pool.length===1?'':'s'} ${tr('picker.normalNote3')}`}
+      </p>
+    </div>
+  `;
+}
+
+const SPEED_SECONDS = 7;
+const TEST_QTYPES = ['mc-def', 'mc-term', 'type'];
+
+function freshSessionBase() {
+  return { correct: 0, mcSelected: null, typedAnswer: '', typeChecked: false, mistakes: [], totalAnswered: 0, consecutiveMistakes: 0, showBreakPrompt: false, forceEnd: false, moodLogged: false, roundsCompleted: 0 };
+}
+
+function startSession(mode) {
+  const pool = state.pendingPool || [];
+  const infinite = !!state.pendingInfinite;
+  if ((mode === 'mc' || mode === 'speed' || mode === 'test') && pool.length < 4) { alert(tr('picker.needFour')); return; }
+  if (pool.length < 1) { alert(tr('picker.empty')); return; }
+
+  if (mode === 'match') { startMatchSession(pool); return; }
+  if (mode === 'test') { startTestSession(pool, infinite); return; }
+
+  pushHistoryIfNeeded('session');
+  state.session = Object.assign(freshSessionBase(), { mode, queue: shuffle(pool), index: 0, flipped: false, label: state.pendingLabel, infinite });
+  state.view = 'session';
+  render();
+  if (mode === 'speed') startSpeedTimer();
+}
+
+function markKnown(known) {
+  const s = state.session;
+  const w = s.queue[s.index];
+  const target = state.words.find(x => x.id === w.id);
+  if (target) target.mastery = Math.max(0, target.mastery + (known ? 1 : -1));
+  s.totalAnswered = (s.totalAnswered || 0) + 1;
+  if (known) { state.streak++; saveStreak(); s.correct++; noteCorrect(s); }
+  else { s.mistakes.push(w); noteWrong(s); }
+  updateWordMasteryDb(target);
+  nextCard();
+}
+function nextCard() {
+  state.session.index++;
+  state.session.flipped = false;
+  state.session.mcSelected = null;
+  state.session.typedAnswer = '';
+  state.session.typeChecked = false;
+  render();
+  if (state.session && state.session.mode === 'speed' && !state.session.showBreakPrompt) startSpeedTimer();
+}
+function toggleFlip() { state.session.flipped = !state.session.flipped; render(); }
+
+// call when s.index has reached s.queue.length inside a render* function.
+// returns true if the caller should keep rendering the (now-looped) current card,
+// false if the caller should show the session-done screen.
+function advanceOrLoop(s) {
+  if (s.infinite) {
+    s.queue = shuffle(s.queue);
+    if (s.mode === 'test') {
+      s.queue = s.queue.map(item => ({ word: item.word, qtype: TEST_QTYPES[Math.floor(Math.random() * TEST_QTYPES.length)] }));
+    }
+    s.index = 0;
+    s.roundsCompleted = (s.roundsCompleted || 0) + 1;
+    return true;
+  }
+  return false;
+}
+function infiniteFlag(s) {
+  return s.infinite ? `<button class="btn-again" style="border-radius:999px; padding:6px 14px; font-size:12px;" onclick="endInfiniteSession()">${tr('session.doneForNow')}</button>` : '';
+}
+function endInfiniteSession() {
+  clearSpeedTimer();
+  const s = state.session;
+  if (!s) return;
+  s.forceEnd = true;
+  render();
+}
+
+/* ---------- TYPING PRACTICE ---------- */
+function renderType() {
+  const s = state.session;
+  if (s.forceEnd) return renderSessionDone();
+  if (s.showBreakPrompt) return renderBreakPrompt();
+  if (s.index >= s.queue.length) {
+    if (!advanceOrLoop(s)) { clearSpeedTimer(); return renderSessionDone(); }
+  }
+  const w = s.queue[s.index];
+  const checked = s.typeChecked;
+  let resultHtml = '';
+  if (checked) {
+    const isCorrect = s.typedAnswer.trim().toLowerCase() === w.term.trim().toLowerCase();
+    resultHtml = `<p class="feedback">${isCorrect ? tr('session.exactlyRight') : `${tr('session.closeItWas')} "${esc(w.term)}"`}</p>`;
+  }
+  return `
+    <div class="paper-card">
+      <div class="session-bar"><span>word ${s.index+1} / ${s.queue.length}${s.infinite ? ' · round '+(s.roundsCompleted+1) : ''} — ${esc(s.label||'')}</span><span>🔥 ${state.streak}</span></div>
+      <div style="text-align:center; margin-top:4px;">${flipAnchorHtml(w)}</div>
+      <p style="text-align:center; font-size:16px; font-weight:600; margin:2px 0 0;">${esc(w.def)}</p>
+      <input id="type-input" placeholder="${tr('session.typeTheWordPlaceholder')}" value="${esc(s.typedAnswer)}" ${checked?'disabled':'autofocus'} onkeydown="if(event.key==='Enter') submitTyped()" oninput="state.session.typedAnswer=this.value" />
+      ${resultHtml}
+      <div class="game-controls" style="margin-top:10px; flex-wrap:wrap;">
+        ${checked ? `<button class="btn-know" onclick="nextCard()">${tr('session.next')}</button>` : `<button class="btn-know" onclick="submitTyped()">${tr('session.check')}</button>`}
+        ${infiniteFlag(s)}
+      </div>
+    </div>`;
+}
+
+function submitTyped() {
+  const s = state.session;
+  const w = s.queue[s.index];
+  const isCorrect = s.typedAnswer.trim().toLowerCase() === w.term.trim().toLowerCase();
+  s.typeChecked = true;
+  s.totalAnswered = (s.totalAnswered || 0) + 1;
+  const target = state.words.find(x => x.id === w.id);
+  if (isCorrect) {
+    state.streak++; saveStreak(); s.correct++; noteCorrect(s);
+    if (target) target.mastery = Math.max(0, target.mastery + 1);
+  } else {
+    s.mistakes.push(w); noteWrong(s);
+    if (target) target.mastery = Math.max(0, target.mastery - 1);
+  }
+  updateWordMasteryDb(target);
+  render();
+}
+
+/* ---------- SPEED ROUND ---------- */
+function startSpeedTimer() {
+  clearSpeedTimer();
+  const s = state.session;
+  if (!s || s.mode !== 'speed' || s.index >= s.queue.length) return;
+  const startedAt = Date.now();
+  state.speedTimerId = setInterval(() => {
+    const elapsed = (Date.now() - startedAt) / 1000;
+    const remaining = Math.max(0, SPEED_SECONDS - elapsed);
+    const fill = document.getElementById('timer-fill');
+    if (fill) fill.style.width = (remaining / SPEED_SECONDS * 100) + '%';
+    if (remaining <= 0) {
+      clearSpeedTimer();
+      if (state.session && state.session.mcSelected === null) speedTimeout();
+    }
+  }, 100);
+}
+function clearSpeedTimer() {
+  if (state.speedTimerId) { clearInterval(state.speedTimerId); state.speedTimerId = null; }
+}
+function speedTimeout() {
+  const s = state.session;
+  if (!s) return;
+  const w = s.queue[s.index];
+  s.mcSelected = -1;
+  s.mistakes.push(w);
+  s.totalAnswered = (s.totalAnswered || 0) + 1;
+  noteWrong(s);
+  const target = state.words.find(x => x.id === w.id);
+  if (target) target.mastery = Math.max(0, target.mastery - 1);
+  updateWordMasteryDb(target);
+  render();
+  setTimeout(() => { if (state.session) nextCard(); }, 900);
+}
+function speedAnswerByIndex(idx) {
+  const s = state.session;
+  if (s.mcSelected !== null) return;
+  clearSpeedTimer();
+  const w = s.queue[s.index];
+  const selectedText = s.currentOptions[idx];
+  s.mcSelected = idx;
+  const isCorrect = selectedText === w.def;
+  s.totalAnswered = (s.totalAnswered || 0) + 1;
+  if (isCorrect) { state.streak++; saveStreak(); s.correct++; noteCorrect(s); }
+  else { s.mistakes.push(w); noteWrong(s); }
+  const target = state.words.find(x => x.id === w.id);
+  if (target) target.mastery = Math.max(0, target.mastery + (isCorrect ? 1 : -1));
+  updateWordMasteryDb(target);
+  render();
+  setTimeout(() => { if (state.session) nextCard(); }, 900);
+}
+function renderSpeed() {
+  const s = state.session;
+  if (s.forceEnd) { clearSpeedTimer(); return renderSessionDone(); }
+  if (s.showBreakPrompt) { clearSpeedTimer(); return renderBreakPrompt(); }
+  if (s.index >= s.queue.length) {
+    if (advanceOrLoop(s)) { startSpeedTimer(); }
+    else { clearSpeedTimer(); return renderSessionDone(); }
+  }
+  const w = s.queue[s.index];
+  if (!s.currentOptions || s.currentWordId !== w.id) {
+    s.currentOptions = generateMCOptions(w, s.queue);
+    s.currentWordId = w.id;
+  }
+  const selected = s.mcSelected;
+  const optionsHtml = s.currentOptions.map((opt, idx) => {
+    let cls = 'mc-option';
+    if (selected !== null) {
+      if (opt === w.def) cls += ' correct';
+      else if (idx === selected) cls += ' wrong';
+    }
+    return `<div class="${cls}" onclick="speedAnswerByIndex(${idx})">${esc(opt)}</div>`;
+  }).join('');
+  return `
+    <div class="paper-card">
+      <div class="session-bar"><span>${tr('session.question')} ${s.index+1} / ${s.queue.length}${s.infinite ? ' · '+tr('session.round')+' '+(s.roundsCompleted+1) : ''} — ${esc(s.label||'')}</span><span>🔥 ${state.streak}</span></div>
+      <div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>
+      <div class="mc-question">${visualAnchor(w,26)}${esc(w.term)}</div>
+      <div class="mc-options">${optionsHtml}</div>
+      ${s.infinite ? `<div class="btn-row" style="justify-content:center; margin-top:10px;">${infiniteFlag(s)}</div>` : ''}
+    </div>`;
+}
+
+/* ---------- TEST MODE (mixed: mc both directions + typing) ---------- */
+function startTestSession(pool, infinite) {
+  const queue = shuffle(pool).map(w => ({ word: w, qtype: TEST_QTYPES[Math.floor(Math.random() * TEST_QTYPES.length)] }));
+  pushHistoryIfNeeded('session');
+  state.session = Object.assign(freshSessionBase(), { mode: 'test', queue, index: 0, label: state.pendingLabel, infinite: !!infinite });
+  state.view = 'session';
+  render();
+}
+
+function testRecordAnswer(item, isCorrect) {
+  const w = item.word;
+  const s = state.session;
+  s.totalAnswered = (s.totalAnswered || 0) + 1;
+  if (isCorrect) { state.streak++; saveStreak(); s.correct++; noteCorrect(s); }
+  else { s.mistakes.push(w); noteWrong(s); }
+  const target = state.words.find(x => x.id === w.id);
+  if (target) target.mastery = Math.max(0, target.mastery + (isCorrect ? 1 : -1));
+  updateWordMasteryDb(target);
+}
+
+function testNext() {
+  state.session.index++;
+  state.session.mcSelected = null;
+  state.session.typedAnswer = '';
+  state.session.typeChecked = false;
+  render();
+}
+
+function testMcAnswerByIndex(idx) {
+  const s = state.session;
+  if (s.mcSelected !== null) return;
+  const item = s.queue[s.index];
+  const w = item.word;
+  const field = item.qtype === 'mc-def' ? 'def' : 'term';
+  const correctText = w[field];
+  const selectedText = s.currentOptions[idx];
+  s.mcSelected = idx;
+  const isCorrect = selectedText === correctText;
+  testRecordAnswer(item, isCorrect);
+  render();
+  setTimeout(() => { if (state.session) testNext(); }, 1100);
+}
+
+function testSubmitTyped() {
+  const s = state.session;
+  const item = s.queue[s.index];
+  const w = item.word;
+  const isCorrect = s.typedAnswer.trim().toLowerCase() === w.term.trim().toLowerCase();
+  s.typeChecked = true;
+  testRecordAnswer(item, isCorrect);
+  render();
+}
+
+function renderTest() {
+  const s = state.session;
+  if (s.forceEnd) return renderSessionDone();
+  if (s.showBreakPrompt) return renderBreakPrompt();
+  if (s.index >= s.queue.length) {
+    if (!advanceOrLoop(s)) return renderSessionDone();
+  }
+  const item = s.queue[s.index];
+  const w = item.word;
+  if (!s.currentOptions || s.currentWordId !== w.id + item.qtype) {
+    if (item.qtype === 'mc-def') s.currentOptions = generateOptionsFor(w, s.queue.map(q=>q.word), 'def');
+    else if (item.qtype === 'mc-term') s.currentOptions = generateOptionsFor(w, s.queue.map(q=>q.word), 'term');
+    s.currentWordId = w.id + item.qtype;
+  }
+
+  const bar = `<div class="session-bar"><span>${tr('session.question')} ${s.index+1} / ${s.queue.length}${s.infinite ? ' · '+tr('session.round')+' '+(s.roundsCompleted+1) : ''} — ${esc(s.label||'')}</span><span>🔥 ${state.streak}</span></div>`;
+  const flagRow = s.infinite ? `<div class="btn-row" style="justify-content:center; margin-top:10px;">${infiniteFlag(s)}</div>` : '';
+
+  if (item.qtype === 'mc-def') {
+    const selected = s.mcSelected;
+    const optionsHtml = s.currentOptions.map((opt, idx) => {
+      let cls = 'mc-option';
+      if (selected !== null) { if (opt === w.def) cls += ' correct'; else if (idx === selected) cls += ' wrong'; }
+      return `<div class="${cls}" onclick="testMcAnswerByIndex(${idx})">${esc(opt)}</div>`;
+    }).join('');
+    return `<div class="paper-card">${bar}
+      <p style="text-align:center; font-size:11px; font-weight:800; color:var(--red-dark); text-transform:uppercase; letter-spacing:0.5px;">${tr('session.chooseDefinition')}</p>
+      <div class="mc-question">${visualAnchor(w,26)}${esc(w.term)}</div>
+      <div class="mc-options">${optionsHtml}</div>
+      ${flagRow}
+    </div>`;
+  }
+
+  if (item.qtype === 'mc-term') {
+    const selected = s.mcSelected;
+    const optionsHtml = s.currentOptions.map((opt, idx) => {
+      let cls = 'mc-option';
+      if (selected !== null) { if (opt === w.term) cls += ' correct'; else if (idx === selected) cls += ' wrong'; }
+      return `<div class="${cls}" onclick="testMcAnswerByIndex(${idx})">${esc(opt)}</div>`;
+    }).join('');
+    return `<div class="paper-card">${bar}
+      <p style="text-align:center; font-size:11px; font-weight:800; color:var(--red-dark); text-transform:uppercase; letter-spacing:0.5px;">${tr('session.chooseWord')}</p>
+      <div class="mc-question" style="font-family:'Manrope',sans-serif; font-size:16px; font-weight:600;">${esc(w.def)}</div>
+      <div class="mc-options">${optionsHtml}</div>
+      ${flagRow}
+    </div>`;
+  }
+
+  // type
+  const checked = s.typeChecked;
+  let resultHtml = '';
+  if (checked) {
+    const isCorrect = s.typedAnswer.trim().toLowerCase() === w.term.trim().toLowerCase();
+    resultHtml = `<p class="feedback">${isCorrect ? tr('session.exactlyRight') : `${tr('session.closeItWas')} "${esc(w.term)}"`}</p>`;
+  }
+  return `<div class="paper-card">${bar}
+    <p style="text-align:center; font-size:11px; font-weight:800; color:var(--red-dark); text-transform:uppercase; letter-spacing:0.5px;">${tr('session.typeTheWord')}</p>
+    <div style="text-align:center; margin-top:4px;">${flipAnchorHtml(w)}</div>
+    <p style="text-align:center; font-size:16px; font-weight:600; margin:2px 0 0;">${esc(w.def)}</p>
+    <input id="type-input" placeholder="${tr('session.typeTheWordPlaceholder')}" value="${esc(s.typedAnswer)}" ${checked?'disabled':'autofocus'} onkeydown="if(event.key==='Enter') testSubmitTyped()" oninput="state.session.typedAnswer=this.value" />
+    ${resultHtml}
+    <div class="game-controls" style="margin-top:10px; flex-wrap:wrap;">
+      ${checked ? `<button class="btn-know" onclick="testNext()">${tr('session.next')}</button>` : `<button class="btn-know" onclick="testSubmitTyped()">${tr('session.check')}</button>`}
+      ${infiniteFlag(s)}
+    </div>
+  </div>`;
+}
+const MATCH_BATCH_SIZE = 6;
+
+function startMatchSession(pool) {
+  pushHistoryIfNeeded('session');
+  state.session = {
+    mode: 'match', allWords: shuffle(pool), batchIndex: 0, batchSize: MATCH_BATCH_SIZE,
+    cards: [], selected: [], wrongFlash: [], matchedCount: 0, totalPairs: 0,
+    label: state.pendingLabel, mistakes: [],
+    wrongAttempts: 0, consecutiveMistakes: 0, showBreakPrompt: false, moodLogged: false,
+    totalAnswered: 0, correct: 0, activityRecorded: false,
+  };
+  loadMatchBatch(state.session);
+  state.view = 'session';
+  render();
+}
+function loadMatchBatch(s) {
+  const start = s.batchIndex * s.batchSize;
+  const batchWords = s.allWords.slice(start, start + s.batchSize);
+  const cards = [];
+  batchWords.forEach(w => {
+    cards.push({ cardId: uid(), wordId: w.id, type: 'term', text: w.term, matched: false });
+    cards.push({ cardId: uid(), wordId: w.id, type: 'def', text: w.def, matched: false });
+  });
+  s.cards = shuffle(cards);
+  s.selected = [];
+  s.wrongFlash = [];
+  s.matchedCount = 0;
+  s.totalPairs = batchWords.length;
+}
+function nextMatchBatch() {
+  const s = state.session;
+  if (!s) return;
+  s.batchIndex++;
+  loadMatchBatch(s);
+  render();
+}
+function matchClick(cardId) {
+  const s = state.session;
+  if (s.showBreakPrompt || s.wrongFlash.length) return;
+  const card = s.cards.find(c => c.cardId === cardId);
+  if (!card || card.matched || s.selected.includes(cardId)) return;
+  if (s.selected.length === 0) { s.selected = [cardId]; render(); return; }
+  const first = s.cards.find(c => c.cardId === s.selected[0]);
+  if (first.wordId === card.wordId && first.type !== card.type) {
+    first.matched = true; card.matched = true;
+    s.matchedCount++; s.selected = [];
+    state.streak++; saveStreak();
+    noteCorrect(s);
+    render();
+  } else {
+    s.wrongFlash = [s.selected[0], cardId];
+    s.selected = [];
+    s.wrongAttempts++;
+    noteWrong(s);
+    render();
+    setTimeout(() => { s.wrongFlash = []; render(); }, 700);
+  }
+}
+function renderMatch() {
+  const s = state.session;
+  if (s.showBreakPrompt) return renderBreakPrompt();
+  if (s.matchedCount >= s.totalPairs) {
+    const doneSoFar = (s.batchIndex + 1) * s.batchSize;
+    const hasMore = doneSoFar < s.allWords.length;
+    if (hasMore) {
+      const remaining = s.allWords.length - doneSoFar;
+      return `
+        <div class="paper-card session-done">
+          <h2>${tr('match.batchCleared')}</h2>
+          <p class="feedback">${remaining} ${remaining===1?tr('topics.word'):tr('topics.words')} ${tr('match.leftInSet')}</p>
+          <div class="game-controls" style="margin-top:14px; flex-wrap:wrap;">
+            <button class="btn-know" onclick="nextMatchBatch()">${tr('match.nextBatch')}</button>
+            <button class="btn-again" onclick="goto('gamePicker')">${tr('match.stopHere')}</button>
+          </div>
+        </div>`;
+    }
+    if (!s.activityRecorded) { s.activityRecorded = true; recordActivityToday(); }
+    s.correct = s.allWords.length;
+    s.totalAnswered = s.allWords.length + s.wrongAttempts;
+    return `
+      <div class="paper-card session-done">
+        <h2>${tr('match.allMatched')}</h2>
+        <p class="feedback">${tr('match.clearedAll')} ${s.allWords.length} ${s.allWords.length===1?tr('topics.word'):tr('topics.words')}${s.wrongAttempts ? ` (${s.wrongAttempts} ${s.wrongAttempts===1?tr('match.mismatchTotal'):tr('match.mismatchesTotal')})` : ''}.</p>
+        <div class="game-controls" style="margin-top:14px;">
+          <button class="btn-again" onclick="goto('gamePicker')">${tr('match.back')}</button>
+          <button class="btn-know" onclick="startSession('match')">${tr('match.playAgain')}</button>
+        </div>
+        ${renderMoodPicker(s)}
+      </div>`;
+  }
+  const cardsHtml = s.cards.map(c => {
+    let cls = 'match-card';
+    if (c.matched) cls += ' matched';
+    else if (s.selected.includes(c.cardId)) cls += ' selected';
+    else if (s.wrongFlash.includes(c.cardId)) cls += ' wrong';
+    return `<div class="${cls}" onclick="matchClick('${c.cardId}')">${c.matched ? '' : esc(c.text)}</div>`;
+  }).join('');
+  return `
+    <div class="paper-card">
+      <div class="session-bar"><span>${tr('match.batch')} ${s.batchIndex+1} — ${tr('match.matched')} ${s.matchedCount} / ${s.totalPairs} — ${esc(s.label||'')}</span><span>🔥 ${state.streak}</span></div>
+      <div class="match-grid">${cardsHtml}</div>
+    </div>`;
+}
+
+function generateMCOptions(correctWord, pool) {
+  return generateOptionsFor(correctWord, pool, 'def');
+}
+
+function generateOptionsFor(correctWord, pool, field) {
+  // field: 'def' or 'term'
+  let others = (pool || []).filter(w => w.id !== correctWord.id);
+  if (others.length < 3) {
+    const sameTopic = state.words.filter(w =>
+      w.id !== correctWord.id &&
+      w.topicId === correctWord.topicId &&
+      !others.some(o => o.id === w.id)
+    );
+    others = others.concat(sameTopic);
+  }
+  if (others.length < 3) {
+    const rest = state.words.filter(w => w.id !== correctWord.id && !others.some(o => o.id === w.id));
+    others = others.concat(rest);
+  }
+  const seen = new Set();
+  const wrongs = [];
+  for (const w of shuffle(others)) {
+    const val = w[field];
+    if (val && val !== correctWord[field] && !seen.has(val)) { seen.add(val); wrongs.push(val); }
+    if (wrongs.length >= 3) break;
+  }
+  return shuffle([correctWord[field], ...wrongs]);
+}
+function mcAnswerByIndex(idx) {
+  const s = state.session;
+  if (s.mcSelected !== null) return;
+  const w = s.queue[s.index];
+  const selectedText = s.currentOptions[idx];
+  s.mcSelected = idx;
+  const isCorrect = selectedText === w.def;
+  s.totalAnswered = (s.totalAnswered || 0) + 1;
+  if (isCorrect) { state.streak++; saveStreak(); s.correct++; noteCorrect(s); }
+  else { s.mistakes.push(w); noteWrong(s); }
+  const target = state.words.find(x => x.id === w.id);
+  if (target) target.mastery = Math.max(0, target.mastery + (isCorrect ? 1 : -1));
+  updateWordMasteryDb(target);
+  render();
+  setTimeout(() => { if (state.session) nextCard(); }, 1100);
+}
+
+function renderFlip() {
+  const s = state.session;
+  if (s.forceEnd) return renderSessionDone();
+  if (s.showBreakPrompt) return renderBreakPrompt();
+  if (s.index >= s.queue.length) {
+    if (!advanceOrLoop(s)) return renderSessionDone();
+  }
+  const w = s.queue[s.index];
+  return `
+    <div class="paper-card">
+      <div class="session-bar"><span>${tr('session.card')} ${s.index+1} / ${s.queue.length}${s.infinite ? ' · '+tr('session.round')+' '+(s.roundsCompleted+1) : ''} — ${esc(s.label||'')}</span><span>🔥 ${state.streak}</span></div>
+      <div class="flip-card ${s.flipped?'flipped':''}" onclick="toggleFlip()">
+        <div class="flip-inner">
+          <div class="flip-face flip-front">${flipAnchorHtml(w)}${esc(w.term)}<div class="flip-hint">${tr('session.tapToFlip')}</div></div>
+          <div class="flip-face flip-back">${esc(w.def)}</div>
+        </div>
+      </div>
+      <div class="game-controls" style="flex-wrap:wrap;">
+        <button class="btn-again" onclick="markKnown(false)">${tr('session.stillLearning')}</button>
+        <button class="btn-know" onclick="markKnown(true)">${tr('session.gotIt')}</button>
+        ${infiniteFlag(s)}
+      </div>
+    </div>`;
+}
+
+function renderMC() {
+  const s = state.session;
+  if (s.forceEnd) return renderSessionDone();
+  if (s.showBreakPrompt) return renderBreakPrompt();
+  if (s.index >= s.queue.length) {
+    if (!advanceOrLoop(s)) return renderSessionDone();
+  }
+  const w = s.queue[s.index];
+  if (!s.currentOptions || s.currentWordId !== w.id) {
+    s.currentOptions = generateMCOptions(w, s.queue);
+    s.currentWordId = w.id;
+  }
+  const selected = s.mcSelected;
+  const optionsHtml = s.currentOptions.map((opt, idx) => {
+    let cls = 'mc-option';
+    if (selected !== null) {
+      if (opt === w.def) cls += ' correct';
+      else if (idx === selected) cls += ' wrong';
+    }
+    return `<div class="${cls}" onclick="mcAnswerByIndex(${idx})">${esc(opt)}</div>`;
+  }).join('');
+  return `
+    <div class="paper-card">
+      <div class="session-bar"><span>${tr('session.question')} ${s.index+1} / ${s.queue.length}${s.infinite ? ' · '+tr('session.round')+' '+(s.roundsCompleted+1) : ''} — ${esc(s.label||'')}</span><span>🔥 ${state.streak}</span></div>
+      <div class="mc-question">${visualAnchor(w,26)}${esc(w.term)}</div>
+      <div class="mc-options">${optionsHtml}</div>
+      ${s.infinite ? `<div class="btn-row" style="justify-content:center; margin-top:10px;">${infiniteFlag(s)}</div>` : ''}
+    </div>`;
+}
+
+function renderSessionDone() {
+  const s = state.session;
+  if (!s.activityRecorded) { s.activityRecorded = true; recordActivityToday(); }
+  const total = s.totalAnswered || 0;
+  const pct = total > 0 ? Math.round((s.correct / total) * 100) : 0;
+  const mistakeCount = s.mistakes.length;
+  return `
+    <div class="paper-card session-done">
+      <h2>${tr('done.roundComplete')}</h2>
+      <p style="font-size:17px;">${s.correct} / ${total} ${tr('done.correct')} (${pct}%)${s.roundsCompleted ? ` · ${s.roundsCompleted} ${s.roundsCompleted===1?tr('done.loopThrough'):tr('done.loopsThrough')}` : ''}</p>
+      <p class="feedback">${pct>=80?tr('done.feedbackHigh'):pct>=50?tr('done.feedbackMid'):tr('done.feedbackLow')}</p>
+      <div class="game-controls" style="margin-top:14px; flex-wrap:wrap;">
+        <button class="btn-again" onclick="goto('gamePicker')">${tr('match.back')}</button>
+        <button class="btn-know" onclick="startSession('${s.mode}')">${tr('match.playAgain')}</button>
+        ${mistakeCount > 0 ? `<button class="btn red" style="border-radius:999px; padding:10px 20px;" onclick="reviewMistakes()">${tr('done.reviewMistake')} ${mistakeCount} ${mistakeCount===1?tr('done.mistake'):tr('done.mistakes')}</button>` : ''}
+      </div>
+      ${renderMoodPicker(s)}
+    </div>`;
+}
+
+function reviewMistakes() {
+  const prev = state.session;
+  if (!prev || !prev.mistakes.length) return;
+  clearSpeedTimer();
+  const pool = prev.mistakes;
+  const label = (prev.label || '') + ' — mistakes';
+  const mode = prev.mode;
+
+  if (mode === 'test') {
+    const queue = shuffle(pool).map(w => ({ word: w, qtype: TEST_QTYPES[Math.floor(Math.random() * TEST_QTYPES.length)] }));
+    state.session = Object.assign(freshSessionBase(), { mode, queue, label, infinite: false });
+  } else {
+    state.session = Object.assign(freshSessionBase(), { mode, queue: shuffle(pool), index: 0, flipped: false, label, infinite: false });
+  }
+  state.view = 'session';
+  render();
+  if (mode === 'speed') startSpeedTimer();
+}
+
+/* ---------- HOME ---------- */
+function renderHome() {
+  return `
+    <div class="folder-grid">
+      <div class="folder-card fc-1" onclick="goto('create', {createDraftTopicId:null})">
+        <div class="fc-tab"></div>
+        <div class="fc-icon">✏️</div>
+        <div class="fc-name">${tr('home.create.title')}</div>
+        <div class="fc-sub">${tr('home.create.sub')}</div>
+      </div>
+      <div class="folder-card fc-2" onclick="goto('dictionary')">
+        <div class="fc-tab"></div>
+        <div class="fc-icon">📖</div>
+        <div class="fc-name">${tr('home.dictionary.title')}</div>
+        <div class="fc-sub">${tr('home.dictionary.sub')}</div>
+      </div>
+      <div class="folder-card fc-3" onclick="goto('topics')">
+        <div class="fc-tab"></div>
+        <div class="fc-icon">🗂️</div>
+        <div class="fc-name">${tr('home.topics.title')}</div>
+        <div class="fc-sub">${tr('home.topics.sub')}</div>
+      </div>
+      <div class="folder-card fc-4" onclick="startHyperfocus()">
+        <div class="fc-tab"></div>
+        <div class="fc-icon">⚡</div>
+        <div class="fc-name">${tr('home.hyperfocus.title')}</div>
+        <div class="fc-sub">${tr('home.hyperfocus.sub')}</div>
+      </div>
+      <div class="folder-card" style="background:#F3D6C6;" onclick="goto('insights')">
+        <div class="fc-tab"></div>
+        <div class="fc-icon">📊</div>
+        <div class="fc-name">${tr('home.insights.title')}</div>
+        <div class="fc-sub">${tr('home.insights.sub')}</div>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------- INSIGHTS ---------- */
+function computeModeStats() {
+  const stats = {};
+  state.sessionLog.forEach(e => {
+    if (!stats[e.mode]) stats[e.mode] = { correct: 0, total: 0 };
+    stats[e.mode].correct += e.correct;
+    stats[e.mode].total += e.total;
+  });
+  return stats;
+}
+function computeMoodCounts() {
+  const counts = {};
+  state.sessionLog.forEach(e => { counts[e.mood] = (counts[e.mood] || 0) + 1; });
+  return counts;
+}
+function computeBestWeekday() {
+  const buckets = {};
+  state.sessionLog.forEach(e => {
+    const day = new Date(e.date + 'T00:00:00').getDay();
+    if (!buckets[day]) buckets[day] = { correct: 0, total: 0 };
+    buckets[day].correct += e.correct;
+    buckets[day].total += e.total;
+  });
+  let best = null, bestPct = -1;
+  Object.keys(buckets).forEach(d => {
+    const b = buckets[d];
+    if (b.total >= 4) {
+      const pct = b.correct / b.total;
+      if (pct > bestPct) { bestPct = pct; best = d; }
+    }
+  });
+  return best !== null ? { day: Number(best), pct: Math.round(bestPct * 100) } : null;
+}
+function renderInsights() {
+  const modeNames = { flip: tr('mode.flip.name'), mc: tr('mode.mc.name'), type: tr('mode.type.name'), speed: tr('mode.speed.name'), match: tr('mode.match.name'), test: tr('mode.test.name') };
+  const modeStats = computeModeStats();
+  const modeKeys = Object.keys(modeStats);
+  const modeBars = modeKeys.length ? modeKeys.map(m => {
+    const s = modeStats[m];
+    const pct = s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0;
+    return `
+      <div style="margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; font-size:12.5px; font-weight:700; margin-bottom:3px;">
+          <span>${modeNames[m] || m}</span><span>${pct}%</span>
+        </div>
+        <div class="timer-track" style="margin-bottom:0;"><div class="timer-fill" style="width:${pct}%; background:var(--green);"></div></div>
+      </div>`;
+  }).join('') : `<div class="empty">${tr('insights.noStats')}</div>`;
+
+  const moodCounts = computeMoodCounts();
+  const moodLabels = { energized: tr('mood.energized'), neutral: tr('mood.neutral'), tired: tr('mood.tired'), irritated: tr('mood.irritated') };
+  const moodHtml = Object.keys(moodCounts).length
+    ? Object.entries(moodCounts).map(([k, v]) => `<span class="topic-badge" style="margin-right:6px; margin-bottom:6px; display:inline-block;">${moodLabels[k] || k} ×${v}</span>`).join('')
+    : `<span style="color:#927e52; font-family:'Caveat',cursive; font-size:18px;">${tr('insights.noCheckins')}</span>`;
+
+  const bestDay = computeBestWeekday();
+  const weekdayKeys = ['weekday.0','weekday.1','weekday.2','weekday.3','weekday.4','weekday.5','weekday.6'];
+  const bestDayHtml = bestDay
+    ? `<p class="feedback">${tr('insights.bestDay')} ${tr(weekdayKeys[bestDay.day])} (${bestDay.pct}% ${tr('insights.bestDayAvg')})</p>`
+    : `<p style="color:#927e52; font-family:'Caveat',cursive; font-size:18px; text-align:center;">${tr('insights.needMoreData')}</p>`;
+
+  const days = [];
+  const today = new Date();
+  for (let i = 34; i >= 0; i--) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  const calHtml = days.map(d => {
+    const active = state.activityDates.includes(d);
+    return `<div title="${d}" style="width:100%; aspect-ratio:1; border-radius:4px; border:1.5px solid var(--ink); background:${active ? 'var(--red)' : 'var(--cream)'};"></div>`;
+  }).join('');
+
+  return `
+    <div class="paper-card">
+      ${paperclipSvg('left')}
+      <span class="field-label">${tr('insights.calendar')}</span>
+      <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:5px; margin-bottom:16px;">${calHtml}</div>
+      <span class="field-label">${tr('insights.moodFeel')}</span>
+      <div style="margin-bottom:16px;">${moodHtml}</div>
+      ${bestDayHtml}
+    </div>
+    <div class="paper-card">
+      ${paperclipSvg('right')}
+      <span class="field-label">${tr('insights.accuracyByMode')}</span>
+      ${modeBars}
+    </div>
+  `;
+}
+
+function startHyperfocus() {
+  if (state.words.length === 0) { alert(tr('picker.empty')); return; }
+  openGamePicker(state.words, 'Hyperfocus — everything', true);
+}
+
+/* ---------- MAIN RENDER ---------- */
+function render() {
+  document.getElementById('streak-display').textContent = state.streak;
+  const app = document.getElementById('app');
+  if (!state.loaded) { app.innerHTML = `<div class="loading">${tr('app.loading')}</div>`; return; }
+
+  let backbar = '';
+  if (state.view !== 'home') {
+    backbar = `<div class="backbar"><button onclick="goBack()">${tr('nav.back')}</button><button onclick="resetToHome()">${tr('nav.home')}</button></div>`;
+  }
+
+  let body = '';
+  if (state.view === 'home') body = renderHome();
+  else if (state.view === 'create') body = renderCreate();
+  else if (state.view === 'dictionary') body = renderDictionary();
+  else if (state.view === 'topics') body = renderTopics();
+  else if (state.view === 'topicDetail') body = renderTopicDetail();
+  else if (state.view === 'gamePicker') body = renderGamePicker();
+  else if (state.view === 'insights') body = renderInsights();
+  else if (state.view === 'session') {
+    if (state.session.mode === 'flip') body = renderFlip();
+    else if (state.session.mode === 'mc') body = renderMC();
+    else if (state.session.mode === 'type') body = renderType();
+    else if (state.session.mode === 'speed') body = renderSpeed();
+    else if (state.session.mode === 'match') body = renderMatch();
+    else if (state.session.mode === 'test') body = renderTest();
+  }
+
+  app.innerHTML = backbar + body;
+}
+
+window.goto = goto;
+window.handleCreateAdd = handleCreateAdd;
+window.onTopicSelectChange = onTopicSelectChange;
+window.studyDraftSet = studyDraftSet;
+window.removeWord = removeWord;
+window.openTopic = openTopic;
+window.studyTopicPool = studyTopicPool;
+window.openGamePicker = openGamePicker;
+window.startSession = startSession;
+window.markKnown = markKnown;
+window.toggleFlip = toggleFlip;
+window.mcAnswerByIndex = mcAnswerByIndex;
+window.reviewMistakes = reviewMistakes;
+window.submitTyped = submitTyped;
+window.speedAnswerByIndex = speedAnswerByIndex;
+window.matchClick = matchClick;
+window.testMcAnswerByIndex = testMcAnswerByIndex;
+window.testSubmitTyped = testSubmitTyped;
+window.testNext = testNext;
+window.startHyperfocus = startHyperfocus;
+window.dismissBreakPrompt = dismissBreakPrompt;
+window.takeBreak = takeBreak;
+window.logMood = logMood;
+window.endInfiniteSession = endInfiniteSession;
+window.toggleFocusSound = toggleFocusSound;
+window.handleImageSelect = handleImageSelect;
+window.clearDraftImage = clearDraftImage;
+window.goBack = goBack;
+window.resetToHome = resetToHome;
+window.nextMatchBatch = nextMatchBatch;
+window.sendMagicLink = sendMagicLink;
+window.signOut = signOut;
+window.setLang = setLang;
+window.state = state;
+
+initAuth();
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
+</script>
+</body>
+</html>
