@@ -511,6 +511,7 @@ const STRINGS = {
     'focusSound.off': 'off',
     'focusSound.white': 'white noise',
     'focusSound.lofi': 'lofi ambient',
+    'focusSound.rain': 'rain',
   },
   ru: {
     'app.tag': 'уголок для твоих слов',
@@ -658,6 +659,7 @@ const STRINGS = {
     'focusSound.off': 'выключить',
     'focusSound.white': 'белый шум',
     'focusSound.lofi': 'lofi эмбиент',
+    'focusSound.rain': 'дождь',
   },
 };
 
@@ -1033,59 +1035,65 @@ function renderMoodPicker(s) {
 /* ---------- FOCUS SOUND (self-contained, no external audio — noise + synthesized lofi ambient) ---------- */
 let focusCtx = null;
 let focusNodes = [];   // all live audio nodes to disconnect on stop
-let focusTimers = [];  // all setInterval/setTimeout ids to clear on stop
-state.focusSoundMode = 'off'; // 'off' | 'noise' | 'lofi'
+let focusTimers = [];  // all setInterval/setTimeout/recursive-timeout ids to clear on stop
+let focusStopping = false; // guards against overlap while a stop is still settling
+state.focusSoundMode = 'off'; // 'off' | 'noise' | 'lofi' | 'rain'
 
-function stopFocusSound() {
-  focusTimers.forEach(id => clearInterval(id));
+async function stopFocusSound() {
+  focusTimers.forEach(id => { clearInterval(id); clearTimeout(id); });
   focusTimers = [];
   focusNodes.forEach(n => { try { n.stop && n.stop(); } catch(e){} try { n.disconnect(); } catch(e){} });
   focusNodes = [];
-  if (focusCtx) { try { focusCtx.close(); } catch(e){} focusCtx = null; }
+  if (focusCtx) {
+    const old = focusCtx;
+    focusCtx = null;
+    try { await old.close(); } catch(e){}
+  }
   state.focusSoundMode = 'off';
 }
 
-function startNoiseSound() {
-  stopFocusSound();
+function makeNoiseBuffer(ctx) {
+  const bufferSize = 2 * ctx.sampleRate;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  return buffer;
+}
+
+async function startNoiseSound() {
+  await stopFocusSound();
   try {
     focusCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const bufferSize = 2 * focusCtx.sampleRate;
-    const buffer = focusCtx.createBuffer(1, bufferSize, focusCtx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-    const src = focusCtx.createBufferSource();
-    src.buffer = buffer; src.loop = true;
-    const gain = focusCtx.createGain();
+    const ctx = focusCtx;
+    const src = ctx.createBufferSource();
+    src.buffer = makeNoiseBuffer(ctx); src.loop = true;
+    const gain = ctx.createGain();
     gain.gain.value = 0.045;
-    src.connect(gain).connect(focusCtx.destination);
+    src.connect(gain).connect(ctx.destination);
     src.start(0);
     focusNodes.push(src, gain);
     state.focusSoundMode = 'noise';
   } catch(e) { console.error('noise sound failed', e); }
 }
 
-function startLofiSound() {
-  stopFocusSound();
+async function startLofiSound() {
+  await stopFocusSound();
   try {
     focusCtx = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = focusCtx;
 
-    // soft vinyl-style texture bed (filtered, quiet noise)
-    const bufferSize = 2 * ctx.sampleRate;
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    // subtle vinyl texture — narrow band, quiet, so it reads as "warmth" not as noise
     const crackle = ctx.createBufferSource();
-    crackle.buffer = buffer; crackle.loop = true;
-    const crackleFilter = ctx.createBiquadFilter();
-    crackleFilter.type = 'highpass'; crackleFilter.frequency.value = 3000;
+    crackle.buffer = makeNoiseBuffer(ctx); crackle.loop = true;
+    const crackleBand = ctx.createBiquadFilter();
+    crackleBand.type = 'bandpass'; crackleBand.frequency.value = 5500; crackleBand.Q.value = 0.6;
     const crackleGain = ctx.createGain();
-    crackleGain.gain.value = 0.015;
-    crackle.connect(crackleFilter).connect(crackleGain).connect(ctx.destination);
+    crackleGain.gain.value = 0.006;
+    crackle.connect(crackleBand).connect(crackleGain).connect(ctx.destination);
     crackle.start(0);
-    focusNodes.push(crackle, crackleFilter, crackleGain);
+    focusNodes.push(crackle, crackleBand, crackleGain);
 
-    // slow, warm chord pad (Cmaj7-ish: C4 E4 G4 B4), gently detuned
+    // warm chord pad (Cmaj7-ish: C4 E4 G4 B4), gently detuned — this should be the dominant sound
     const padFreqs = [261.63, 329.63, 392.00, 493.88];
     padFreqs.forEach((freq, i) => {
       const osc = ctx.createOscillator();
@@ -1098,8 +1106,7 @@ function startLofiSound() {
       g.gain.value = 0;
       osc.connect(lp).connect(g).connect(ctx.destination);
       osc.start(0);
-      // slow fade in for a gentle pad swell
-      g.gain.linearRampToValueAtTime(0.028, ctx.currentTime + 3 + i * 0.4);
+      g.gain.linearRampToValueAtTime(0.038, ctx.currentTime + 3 + i * 0.4);
       focusNodes.push(osc, lp, g);
     });
 
@@ -1118,26 +1125,82 @@ function startLofiSound() {
       osc.start(t); osc.stop(t + 0.25);
     };
     playThump();
-    const thumpId = setInterval(playThump, 1400);
-    focusTimers.push(thumpId);
+    focusTimers.push(setInterval(playThump, 1400));
 
     state.focusSoundMode = 'lofi';
   } catch(e) { console.error('lofi sound failed', e); }
 }
 
-function setFocusSound(mode) {
-  if (mode === 'noise') startNoiseSound();
-  else if (mode === 'lofi') startLofiSound();
-  else stopFocusSound();
+async function startRainSound() {
+  await stopFocusSound();
+  try {
+    focusCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = focusCtx;
+
+    // steady rain "shush" — lowpassed noise as the base bed
+    const rain = ctx.createBufferSource();
+    rain.buffer = makeNoiseBuffer(ctx); rain.loop = true;
+    const rainFilter = ctx.createBiquadFilter();
+    rainFilter.type = 'lowpass'; rainFilter.frequency.value = 2600;
+    const rainGain = ctx.createGain();
+    rainGain.gain.value = 0.05;
+    rain.connect(rainFilter).connect(rainGain).connect(ctx.destination);
+    rain.start(0);
+    focusNodes.push(rain, rainFilter, rainGain);
+
+    // slow LFO on the gain for an organic, shifting intensity rather than a flat hiss
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine'; lfo.frequency.value = 0.15;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 0.012;
+    lfo.connect(lfoDepth).connect(rainGain.gain);
+    lfo.start(0);
+    focusNodes.push(lfo, lfoDepth);
+
+    // occasional random higher-pitched "drip" for a bit of realism
+    const playDrip = () => {
+      if (!focusCtx) return;
+      const t = focusCtx.currentTime;
+      const drip = focusCtx.createBufferSource();
+      drip.buffer = makeNoiseBuffer(focusCtx);
+      const band = focusCtx.createBiquadFilter();
+      band.type = 'bandpass'; band.frequency.value = 2200 + Math.random() * 1800; band.Q.value = 4;
+      const g = focusCtx.createGain();
+      g.gain.setValueAtTime(0.03, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      drip.connect(band).connect(g).connect(focusCtx.destination);
+      drip.start(t); drip.stop(t + 0.1);
+      const nextId = setTimeout(playDrip, 250 + Math.random() * 900);
+      focusTimers.push(nextId);
+    };
+    const firstDripId = setTimeout(playDrip, 400);
+    focusTimers.push(firstDripId);
+
+    state.focusSoundMode = 'rain';
+  } catch(e) { console.error('rain sound failed', e); }
+}
+
+async function setFocusSound(mode) {
+  if (focusStopping) return;
+  focusStopping = true;
   closeFocusMenu();
-  updateFocusBtn();
+  try {
+    if (mode === 'noise') await startNoiseSound();
+    else if (mode === 'lofi') await startLofiSound();
+    else if (mode === 'rain') await startRainSound();
+    else await stopFocusSound();
+  } finally {
+    focusStopping = false;
+    updateFocusBtn();
+  }
 }
 
 function updateFocusBtn() {
   const btn = document.getElementById('focus-sound-btn');
   if (!btn) return;
   btn.style.background = state.focusSoundMode === 'off' ? 'var(--cream)' : 'var(--gold)';
-  btn.textContent = state.focusSoundMode === 'lofi' ? '🎵' : state.focusSoundMode === 'noise' ? '🌊' : '🎧';
+  const icons = { lofi: '🎵', noise: '🌊', rain: '🌧️', off: '🎧' };
+  btn.textContent = icons[state.focusSoundMode] || '🎧';
 }
 
 function toggleFocusMenu() {
@@ -1152,6 +1215,7 @@ function toggleFocusMenu() {
     <div class="focus-menu-item" onclick="setFocusSound('off')">🔇 ${tr('focusSound.off')}</div>
     <div class="focus-menu-item" onclick="setFocusSound('noise')">🌊 ${tr('focusSound.white')}</div>
     <div class="focus-menu-item" onclick="setFocusSound('lofi')">🎵 ${tr('focusSound.lofi')}</div>
+    <div class="focus-menu-item" onclick="setFocusSound('rain')">🌧️ ${tr('focusSound.rain')}</div>
   `;
   btn.parentElement.style.position = 'relative';
   btn.parentElement.appendChild(menu);
