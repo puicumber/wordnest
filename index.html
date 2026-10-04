@@ -772,6 +772,16 @@ function setAuthFormMode(mode) {
   renderLoginScreen();
 }
 
+async function enterApp(user) {
+  if (state.currentUser && state.currentUser.id === user.id && state.loaded) { state.currentUser = user; return; }
+  state.currentUser = user;
+  state.authView = 'app';
+  document.getElementById('app-header').style.display = 'flex';
+  document.getElementById('header-lang-toggle').innerHTML = langToggleHtml();
+  applyStaticLang();
+  await loadAll();
+}
+
 async function submitAuthForm() {
   const username = document.getElementById('login-username').value;
   const password = document.getElementById('login-password').value;
@@ -790,19 +800,25 @@ async function submitAuthForm() {
         if (errEl) errEl.textContent = /already registered|already exists/i.test(error.message) ? tr('login.usernameTaken') : error.message;
         return;
       }
-      if (!data.session) {
+      let sess = data.session;
+      if (!sess) {
+        // no session returned: try signing in with the same details right away
+        const r = await sb.auth.signInWithPassword({ email: fakeEmail, password });
+        sess = r.data && r.data.session;
+      }
+      if (!sess) {
         // Project still has "Confirm email" turned on for a domain that can never receive mail.
         if (errEl) errEl.textContent = tr('login.confirmEmailStillOn');
         return;
       }
-      // signed in immediately — onAuthStateChange handles the rest
+      await enterApp(sess.user); // straight into the app, no second login
     } else {
-      const { error } = await sb.auth.signInWithPassword({ email: fakeEmail, password });
+      const { data, error } = await sb.auth.signInWithPassword({ email: fakeEmail, password });
       if (error) {
         if (errEl) errEl.textContent = /invalid login credentials/i.test(error.message) ? tr('login.wrongCredentials') : error.message;
         return;
       }
-      // onAuthStateChange handles the rest
+      await enterApp(data.session.user);
     }
   } catch (e) {
     if (errEl) errEl.textContent = tr('login.couldNotSend');
@@ -816,7 +832,7 @@ async function signOut() {
   state.currentUser = null;
   state.authView = 'login';
   state.words = []; state.topics = []; state.sessionLog = []; state.activityDates = [];
-  state.streak = 0; state.view = 'home'; state.navStack = [];
+  state.streak = 0; state.view = 'home'; state.navStack = []; state.loaded = false;
   renderLoginScreen();
 }
 
@@ -851,15 +867,10 @@ async function initAuth() {
   sb.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' && session && session.user) {
       // Supabase re-fires SIGNED_IN when the tab regains focus; don't reload/re-render then
-      if (state.currentUser && state.currentUser.id === session.user.id && state.loaded) { state.currentUser = session.user; return; }
-      state.currentUser = session.user;
-      state.authView = 'app';
-      document.getElementById('app-header').style.display = 'flex';
-      document.getElementById('header-lang-toggle').innerHTML = langToggleHtml();
-      applyStaticLang();
-      await loadAll();
+      await enterApp(session.user);
     } else if (event === 'SIGNED_OUT') {
       state.currentUser = null;
+      state.loaded = false;
       state.authView = 'login';
       renderLoginScreen();
     }
@@ -1964,7 +1975,8 @@ function matchClick(cardId) {
   const s = state.session;
   if (s.showBreakPrompt || s.wrongFlash.length) return;
   const card = s.cards.find(c => c.cardId === cardId);
-  if (!card || card.matched || s.selected.includes(cardId)) return;
+  if (!card || card.matched) return;
+  if (s.selected.includes(cardId)) { s.selected = []; render(); return; } // tap again = deselect
   if (s.selected.length === 0) { s.selected = [cardId]; render(); return; }
   const first = s.cards.find(c => c.cardId === s.selected[0]);
   if (first.wordId === card.wordId && first.type !== card.type) {
