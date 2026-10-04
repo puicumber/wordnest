@@ -296,6 +296,7 @@
   .mode-btn.adhd .mode-note { color: var(--red-dark); }
 
   /* ---- typing practice ---- */
+  .btn-know:disabled { opacity: .4; cursor: not-allowed; }
   #type-input { margin: 14px 0 6px; text-align: center; font-size: 17px; font-weight: 700; }
 
   /* ---- speed round timer ---- */
@@ -1030,8 +1031,8 @@ function logMood(mood) {
   const s = state.session;
   if (!s || s.moodLogged) return;
   s.moodLogged = true;
-  const total = s.totalAnswered || 0;
-  const entry = { date: todayStr(), mode: s.mode, mood, correct: s.correct || 0, total };
+  const total = s.firstPass ? s.firstPass.total : (s.totalAnswered || 0);
+  const entry = { date: todayStr(), mode: s.mode, mood, correct: s.firstPass ? s.firstPass.correct : (s.correct || 0), total };
   state.sessionLog.push(entry);
   insertSessionLogDb(entry);
   render();
@@ -1672,6 +1673,23 @@ function advanceOrLoop(s) {
     s.roundsCompleted = (s.roundsCompleted || 0) + 1;
     return true;
   }
+  // Finite set: it isn't finished until every missed word has been answered correctly.
+  if (s.mode !== 'match' && s.mistakes && s.mistakes.length) {
+    if (!s.firstPass) {
+      s.firstPass = { correct: s.correct, total: s.totalAnswered || 0 };
+      s.baseLabel = s.label || '';
+    }
+    const seen = new Set(); const words = [];
+    s.mistakes.forEach(w => { if (!seen.has(w.id)) { seen.add(w.id); words.push(w); } });
+    s.mistakes = [];
+    s.retryRound = (s.retryRound || 0) + 1;
+    s.label = s.baseLabel + (currentLang === 'ru' ? ' — работа над ошибками' : ' — fix your mistakes');
+    s.queue = shuffle(words);
+    if (s.mode === 'test') s.queue = s.queue.map(w => ({ word: w, qtype: TEST_QTYPES[Math.floor(Math.random() * TEST_QTYPES.length)] }));
+    s.index = 0;
+    s.currentOptions = null; s.currentWordId = null;
+    return true;
+  }
   return false;
 }
 function infiniteFlag(s) {
@@ -1700,25 +1718,54 @@ function renderType() {
     const isCorrect = s.typedAnswer.trim().toLowerCase() === w.term.trim().toLowerCase();
     resultHtml = `<p class="feedback">${isCorrect ? tr('session.exactlyRight') : `${tr('session.closeItWas')} "${esc(w.term)}"`}</p>`;
   }
+  const cb = copyBlockHtml(s, w, 'nextCard');
   return `
     <div class="paper-card">
       <div class="session-bar"><span>word ${s.index+1} / ${s.queue.length}${s.infinite ? ' · round '+(s.roundsCompleted+1) : ''} — ${esc(s.label||'')}</span><span>🔥 ${state.streak}</span></div>
       <div style="text-align:center; margin-top:4px;">${flipAnchorHtml(w)}</div>
       <p style="text-align:center; font-size:16px; font-weight:600; margin:2px 0 0;">${esc(w.def)}</p>
-      <input id="type-input" placeholder="${tr('session.typeTheWordPlaceholder')}" value="${esc(s.typedAnswer)}" ${checked?'disabled':'autofocus'} onkeydown="if(event.key==='Enter') submitTyped()" oninput="state.session.typedAnswer=this.value" />
+      <input id="type-input" name="ans-${Date.now()}" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" placeholder="${tr('session.typeTheWordPlaceholder')}" value="${esc(s.typedAnswer)}" ${checked?'disabled':'autofocus'} onkeydown="if(event.key==='Enter') submitTyped()" oninput="state.session.typedAnswer=this.value" />
       ${resultHtml}
+      ${cb.html}
       <div class="game-controls" style="margin-top:10px; flex-wrap:wrap;">
-        ${checked ? `<button class="btn-know" onclick="nextCard()">${tr('session.next')}</button>` : `<button class="btn-know" onclick="submitTyped()">${tr('session.check')}</button>`}
+        ${checked ? `<button id="next-btn" class="btn-know" ${cb.needCopy?'disabled':''} onclick="nextCard()">${tr('session.next')}</button>` : `<button class="btn-know" onclick="submitTyped()">${tr('session.check')}</button>`}
         ${infiniteFlag(s)}
       </div>
     </div>`;
 }
+
+/* After a wrong typed answer: show the word and make the student copy it out before moving on */
+function copyBlockHtml(s, w, nextFn) {
+  const wrong = s.typeChecked && s.typedAnswer.trim().toLowerCase() !== w.term.trim().toLowerCase();
+  if (!wrong) return { html: '', needCopy: false };
+  const ru = currentLang === 'ru';
+  const ok = (s.copyTyped || '').trim().toLowerCase() === w.term.trim().toLowerCase();
+  return { needCopy: !ok, html: `
+    <div style="margin-top:12px; padding:12px; border:2px dashed var(--red); border-radius:10px; text-align:center;">
+      <div style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--red-dark);">${ru ? 'перепиши слово, чтобы запомнить' : 'write it out once to remember it'}</div>
+      <div style="font-size:26px; font-weight:800; margin:6px 0;">${esc(w.term)}</div>
+      <input id="copy-input" name="cp-${Date.now()}" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" placeholder="${ru ? 'напиши здесь' : 'type it here'}" value="${esc(s.copyTyped||'')}" oninput="onCopyInput(this.value)" onkeydown="if(event.key==='Enter') copyEnter('${nextFn}')" style="text-align:center; font-size:17px; font-weight:700;" />
+    </div>` };
+}
+function onCopyInput(v) {
+  const s = state.session; s.copyTyped = v;
+  const w = s.mode === 'test' ? s.queue[s.index].word : s.queue[s.index];
+  const ok = v.trim().toLowerCase() === w.term.trim().toLowerCase();
+  const btn = document.getElementById('next-btn'); if (btn) btn.disabled = !ok;
+  const inp = document.getElementById('copy-input'); if (inp) inp.style.borderColor = ok ? 'var(--ink)' : '';
+}
+function copyEnter(fn) {
+  const btn = document.getElementById('next-btn');
+  if (btn && !btn.disabled) window[fn]();
+}
+function focusCopyInput() { setTimeout(() => { const i = document.getElementById('copy-input'); if (i) i.focus(); }, 30); }
 
 function submitTyped() {
   const s = state.session;
   const w = s.queue[s.index];
   const isCorrect = s.typedAnswer.trim().toLowerCase() === w.term.trim().toLowerCase();
   s.typeChecked = true;
+  s.copyTyped = '';
   s.totalAnswered = (s.totalAnswered || 0) + 1;
   const target = state.words.find(x => x.id === w.id);
   if (isCorrect) {
@@ -1730,6 +1777,7 @@ function submitTyped() {
   }
   updateWordMasteryDb(target);
   render();
+  if (!isCorrect) focusCopyInput();
 }
 
 /* ---------- SPEED ROUND ---------- */
@@ -1864,8 +1912,10 @@ function testSubmitTyped() {
   const w = item.word;
   const isCorrect = s.typedAnswer.trim().toLowerCase() === w.term.trim().toLowerCase();
   s.typeChecked = true;
+  s.copyTyped = '';
   testRecordAnswer(item, isCorrect);
   render();
+  if (!isCorrect) focusCopyInput();
 }
 
 function renderTest() {
@@ -1923,14 +1973,16 @@ function renderTest() {
     const isCorrect = s.typedAnswer.trim().toLowerCase() === w.term.trim().toLowerCase();
     resultHtml = `<p class="feedback">${isCorrect ? tr('session.exactlyRight') : `${tr('session.closeItWas')} "${esc(w.term)}"`}</p>`;
   }
+  const cb = copyBlockHtml(s, w, 'testNext');
   return `<div class="paper-card">${bar}
     <p style="text-align:center; font-size:11px; font-weight:800; color:var(--red-dark); text-transform:uppercase; letter-spacing:0.5px;">${tr('session.typeTheWord')}</p>
     <div style="text-align:center; margin-top:4px;">${flipAnchorHtml(w)}</div>
     <p style="text-align:center; font-size:16px; font-weight:600; margin:2px 0 0;">${esc(w.def)}</p>
-    <input id="type-input" placeholder="${tr('session.typeTheWordPlaceholder')}" value="${esc(s.typedAnswer)}" ${checked?'disabled':'autofocus'} onkeydown="if(event.key==='Enter') testSubmitTyped()" oninput="state.session.typedAnswer=this.value" />
+    <input id="type-input" name="ans-${Date.now()}" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" placeholder="${tr('session.typeTheWordPlaceholder')}" value="${esc(s.typedAnswer)}" ${checked?'disabled':'autofocus'} onkeydown="if(event.key==='Enter') testSubmitTyped()" oninput="state.session.typedAnswer=this.value" />
     ${resultHtml}
+    ${cb.html}
     <div class="game-controls" style="margin-top:10px; flex-wrap:wrap;">
-      ${checked ? `<button class="btn-know" onclick="testNext()">${tr('session.next')}</button>` : `<button class="btn-know" onclick="testSubmitTyped()">${tr('session.check')}</button>`}
+      ${checked ? `<button id="next-btn" class="btn-know" ${cb.needCopy?'disabled':''} onclick="testNext()">${tr('session.next')}</button>` : `<button class="btn-know" onclick="testSubmitTyped()">${tr('session.check')}</button>`}
       ${infiniteFlag(s)}
     </div>
   </div>`;
@@ -2144,13 +2196,17 @@ function renderMC() {
 function renderSessionDone() {
   const s = state.session;
   if (!s.activityRecorded) { s.activityRecorded = true; recordActivityToday(); }
-  const total = s.totalAnswered || 0;
-  const pct = total > 0 ? Math.round((s.correct / total) * 100) : 0;
+  const fp = s.firstPass;
+  const doneCorrect = fp ? fp.correct : s.correct;
+  const total = fp ? fp.total : (s.totalAnswered || 0);
+  const pct = total > 0 ? Math.round((doneCorrect / total) * 100) : 0;
   const mistakeCount = s.mistakes.length;
+  const fixedNote = fp && !mistakeCount ? `<p class="feedback">${currentLang==='ru' ? '✅ Все ошибки исправлены — набор пройден полностью.' : '✅ All mistakes fixed — set fully completed.'}</p>` : '';
   return `
     <div class="paper-card session-done">
       <h2>${tr('done.roundComplete')}</h2>
-      <p style="font-size:17px;">${s.correct} / ${total} ${tr('done.correct')} (${pct}%)${s.roundsCompleted ? ` · ${s.roundsCompleted} ${s.roundsCompleted===1?tr('done.loopThrough'):tr('done.loopsThrough')}` : ''}</p>
+      <p style="font-size:17px;">${doneCorrect} / ${total} ${tr('done.correct')} (${pct}%)${s.roundsCompleted ? ` · ${s.roundsCompleted} ${s.roundsCompleted===1?tr('done.loopThrough'):tr('done.loopsThrough')}` : ''}</p>
+      ${fixedNote}
       <p class="feedback">${pct>=80?tr('done.feedbackHigh'):pct>=50?tr('done.feedbackMid'):tr('done.feedbackLow')}</p>
       <div class="game-controls" style="margin-top:14px; flex-wrap:wrap;">
         <button class="btn-again" onclick="goto('gamePicker')">${tr('match.back')}</button>
@@ -2348,6 +2404,7 @@ window.handleCreateAdd = handleCreateAdd;
 window.onTopicSelectChange = onTopicSelectChange;
 window.studyDraftSet = studyDraftSet;
 window.removeWord = removeWord;
+window.onCopyInput = onCopyInput; window.copyEnter = copyEnter; window.nextCard = nextCard; window.testNext = testNext;
 window.startEditWord = startEditWord; window.cancelEditWord = cancelEditWord; window.saveEditWord = saveEditWord;
 window.handleEditImageSelect = handleEditImageSelect; window.clearEditImage = clearEditImage;
 window.openTopic = openTopic;
