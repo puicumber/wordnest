@@ -415,6 +415,7 @@ const STRINGS = {
     'create.termPlaceholder': 'word or phrase',
     'create.defPlaceholder': 'definition, translation, or your own note',
     'create.addWordBtn': '+ add word',
+    'edit.edit': 'edit', 'edit.save': 'save', 'edit.cancel': 'cancel', 'edit.failed': 'Could not save the change. Check your connection and try again.',
     'create.dualCoding': '🧠 dual coding: pairing a word with an emoji or picture makes it stick in memory noticeably better than text alone — pick whichever fits',
     'create.empty': 'words you add will collect here ✎',
     'create.startStudying': 'start studying this set →',
@@ -563,6 +564,7 @@ const STRINGS = {
     'create.termPlaceholder': 'слово или фраза',
     'create.defPlaceholder': 'определение, перевод или своя заметка',
     'create.addWordBtn': '+ добавить слово',
+    'edit.edit': 'редактировать', 'edit.save': 'сохранить', 'edit.cancel': 'отмена', 'edit.failed': 'Не удалось сохранить изменение. Проверь интернет и попробуй ещё раз.',
     'create.dualCoding': '🧠 двойное кодирование: слово + эмодзи или картинка запоминается заметно лучше, чем просто текст — выбирай, что подходит',
     'create.empty': 'добавленные слова появятся здесь ✎',
     'create.startStudying': 'начать изучение набора →',
@@ -703,6 +705,9 @@ const state = {
   session: null,
   createDraftTopicId: null,
   createDraftImage: null,
+  createDraft: { term: '', def: '', emoji: '', topicName: '' },
+  editingWordId: null,
+  editDraftImage: undefined,
   pendingInfinite: false,
   activityDates: [],
   sessionLog: [],
@@ -845,6 +850,8 @@ async function initAuth() {
   }
   sb.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' && session && session.user) {
+      // Supabase re-fires SIGNED_IN when the tab regains focus; don't reload/re-render then
+      if (state.currentUser && state.currentUser.id === session.user.id && state.loaded) { state.currentUser = session.user; return; }
       state.currentUser = session.user;
       state.authView = 'app';
       document.getElementById('app-header').style.display = 'flex';
@@ -1272,6 +1279,7 @@ function goto(view, extra) {
   pushHistoryIfNeeded(view);
   state.view = view;
   state.session = null;
+  state.editingWordId = null; state.editDraftImage = undefined;
   if (extra) Object.assign(state, extra);
   render();
 }
@@ -1311,19 +1319,19 @@ function renderCreate() {
             ${topicOptions}
           </select>
         </div>
-        <input id="new-topic-name" placeholder="${tr('create.newSetPlaceholder')}" style="${state.createDraftTopicId ? 'display:none;' : ''}" />
+        <input id="new-topic-name" oninput="state.createDraft.topicName=this.value" value="${esc(state.createDraft.topicName)}" placeholder="${tr('create.newSetPlaceholder')}" style="${state.createDraftTopicId ? 'display:none;' : ''}" />
       </div>
 
       <span class="field-label">${tr('create.addWord')}</span>
       <div class="stack">
         <div class="btn-row">
-          <input id="create-term" placeholder="${tr('create.termPlaceholder')}" style="flex:2;" />
-          <input id="create-emoji" placeholder="🖼️" maxlength="4" style="flex:0 0 60px; text-align:center;" />
+          <input id="create-term" oninput="state.createDraft.term=this.value" value="${esc(state.createDraft.term)}" placeholder="${tr('create.termPlaceholder')}" style="flex:2;" />
+          <input id="create-emoji" oninput="state.createDraft.emoji=this.value" value="${esc(state.createDraft.emoji)}" placeholder="🖼️" maxlength="4" style="flex:0 0 60px; text-align:center;" />
         </div>
-        <textarea id="create-def" rows="2" placeholder="${tr('create.defPlaceholder')}"></textarea>
+        <textarea id="create-def" rows="2" oninput="state.createDraft.def=this.value" placeholder="${tr('create.defPlaceholder')}">${esc(state.createDraft.def)}</textarea>
         <div class="btn-row" style="align-items:center;">
           <input id="create-image" type="file" accept="image/*" onchange="handleImageSelect(this)" style="flex:1; font-size:12.5px; padding:8px;" />
-          <div id="image-preview" style="display:flex; align-items:center; gap:6px;"></div>
+          <div id="image-preview" style="display:flex; align-items:center; gap:6px;">${state.createDraftImage ? `<img src="${state.createDraftImage}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:2px solid var(--ink);" /><button type="button" onclick="clearDraftImage()" style="background:none;border:none;color:var(--red);font-weight:800;font-size:12px;cursor:pointer;">${tr('create.removeImg')}</button>` : ''}</div>
         </div>
         <div class="btn-row">
           <button class="btn" onclick="handleCreateAdd()">${tr('create.addWordBtn')}</button>
@@ -1331,17 +1339,95 @@ function renderCreate() {
       </div>
       <p style="font-family: 'Work Sans', sans-serif; font-style: italic; font-size:17px; color:#7a6640; margin:-4px 0 14px;">${tr('create.dualCoding')}</p>
 
-      ${draftWords.length ? `<div class="word-list">` + draftWords.map(w => `
-        <div class="word-row">
-          <div><div class="term">${visualAnchor(w,28)}${esc(w.term)}</div><div class="def">${esc(w.def)}</div></div>
-          <button class="remove" onclick="removeWord('${w.id}')">✕</button>
-        </div>`).join('') + `</div>` : `<div class="empty">${tr('create.empty')}</div>`}
+      ${draftWords.length ? `<div class="word-list">` + draftWords.map(w => wordRowHtml(w, false)).join('') + `</div>` : `<div class="empty">${tr('create.empty')}</div>`}
 
       <div class="btn-row" style="margin-top:14px;">
         <button class="btn red" onclick="studyDraftSet()">${tr('create.startStudying')}</button>
       </div>
     </div>
   `;
+}
+
+function wordRowHtml(w, showTopic) {
+  if (state.editingWordId === w.id) return editRowHtml(w);
+  const topic = showTopic ? state.topics.find(t => t.id === w.topicId) : null;
+  return `<div class="word-row">
+    <div>
+      <div class="term">${visualAnchor(w,26)}${esc(w.term)}</div>
+      <div class="def">${esc(w.def)}</div>
+      ${topic ? `<span class="topic-badge">${esc(topic.name)}</span>` : ''}
+    </div>
+    <div style="display:flex; gap:6px; align-items:flex-start;">
+      <button class="remove" title="${tr('edit.edit')}" onclick="startEditWord('${w.id}')">✎</button>
+      <button class="remove" onclick="removeWord('${w.id}')">✕</button>
+    </div>
+  </div>`;
+}
+function editRowHtml(w) {
+  const img = state.editDraftImage === undefined ? w.image : state.editDraftImage;
+  const opts = `<option value="">—</option>` + state.topics.map(t => `<option value="${t.id}" ${w.topicId===t.id?'selected':''}>${esc(t.name)}</option>`).join('');
+  return `<div class="word-row" style="display:block;">
+    <div class="stack">
+      <div class="btn-row">
+        <input id="edit-term" value="${esc(w.term)}" style="flex:2;" />
+        <input id="edit-emoji" value="${esc(w.emoji||'')}" maxlength="4" style="flex:0 0 60px; text-align:center;" />
+      </div>
+      <textarea id="edit-def" rows="2">${esc(w.def)}</textarea>
+      <select id="edit-topic">${opts}</select>
+      <div class="btn-row" style="align-items:center;">
+        <input id="edit-image" type="file" accept="image/*" onchange="handleEditImageSelect(this)" style="flex:1; font-size:12.5px; padding:8px;" />
+        <div style="display:flex; align-items:center; gap:6px;">${img ? `<img src="${img}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:2px solid var(--ink);" /><button type="button" onclick="clearEditImage()" style="background:none;border:none;color:var(--red);font-weight:800;font-size:12px;cursor:pointer;">${tr('create.removeImg')}</button>` : ''}</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn red" onclick="saveEditWord()">${tr('edit.save')}</button>
+        <button class="btn ghost" onclick="cancelEditWord()">${tr('edit.cancel')}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function startEditWord(id) { state.editingWordId = id; state.editDraftImage = undefined; render(); }
+function cancelEditWord() { state.editingWordId = null; state.editDraftImage = undefined; render(); }
+function readEditFields() {
+  const g = id => document.getElementById(id);
+  return { term: g('edit-term').value, emoji: g('edit-emoji').value, def: g('edit-def').value, topic: g('edit-topic').value };
+}
+function rerenderKeepingEdit() {
+  const f = readEditFields(); const w = state.words.find(x => x.id === state.editingWordId);
+  if (w) { w.term = f.term; w.emoji = f.emoji; w.def = f.def; w.topicId = f.topic || null; }
+  render();
+}
+function handleEditImageSelect(input) {
+  const file = input.files && input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 160; let w = img.width, h = img.height;
+      if (w > h && w > maxDim) { h = Math.round(h * (maxDim / w)); w = maxDim; }
+      else if (h >= w && h > maxDim) { w = Math.round(w * (maxDim / h)); h = maxDim; }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      state.editDraftImage = c.toDataURL('image/jpeg', 0.7);
+      rerenderKeepingEdit();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function clearEditImage() { state.editDraftImage = null; rerenderKeepingEdit(); }
+async function saveEditWord() {
+  const w = state.words.find(x => x.id === state.editingWordId); if (!w) return cancelEditWord();
+  const f = readEditFields();
+  const term = f.term.trim(), def = f.def.trim();
+  if (!term || !def) return;
+  w.term = term; w.def = def; w.emoji = f.emoji.trim(); w.topicId = f.topic || null;
+  if (state.editDraftImage !== undefined) w.image = state.editDraftImage;
+  state.editingWordId = null; state.editDraftImage = undefined;
+  render();
+  try {
+    const { error } = await sb.from('words').update({ term: w.term, def: w.def, emoji: w.emoji || null, image: w.image || null, topic_id: w.topicId }).eq('id', w.id);
+    if (error) throw error;
+  } catch(e) { console.error('update word failed', e); alert(tr('edit.failed')); }
 }
 
 function onTopicSelectChange(val) {
@@ -1368,6 +1454,7 @@ function handleCreateAdd() {
   const newWord = { id: uid(), term, def, emoji, image, topicId, mastery: 0 };
   state.words.unshift(newWord);
   state.createDraftImage = null;
+  state.createDraft.term = ''; state.createDraft.def = ''; state.createDraft.emoji = ''; state.createDraft.topicName = '';
   insertWordDb(newWord);
   render();
 }
@@ -1382,17 +1469,7 @@ function studyDraftSet() {
 function renderDictionary() {
   const list = state.words.length === 0
     ? `<div class="empty">${tr('dict.empty')}</div>`
-    : `<div class="word-list">` + state.words.map(w => {
-        const topic = state.topics.find(t => t.id === w.topicId);
-        return `<div class="word-row">
-          <div>
-            <div class="term">${visualAnchor(w,26)}${esc(w.term)}</div>
-            <div class="def">${esc(w.def)}</div>
-            ${topic ? `<span class="topic-badge">${esc(topic.name)}</span>` : ''}
-          </div>
-          <button class="remove" onclick="removeWord('${w.id}')">✕</button>
-        </div>`;
-      }).join('') + `</div>`;
+    : `<div class="word-list">` + state.words.map(w => wordRowHtml(w, true)).join('') + `</div>`;
   return `<div class="paper-card">${paperclipSvg('right')}
     <span class="field-label">${state.words.length} ${tr('dict.wordsTotal')}</span>
     ${list}
@@ -1467,11 +1544,7 @@ function renderTopicDetail() {
         <button class="btn ghost" style="border-color:var(--red); color:var(--red);" onclick="deleteTopic()">${tr('topicDetail.deleteSet')}</button>
       </div>
       ${pool.length === 0 ? `<div class="empty">${tr('topicDetail.empty')}</div>` :
-        `<div class="word-list">` + pool.map(w => `
-          <div class="word-row">
-            <div><div class="term">${visualAnchor(w,26)}${esc(w.term)}</div><div class="def">${esc(w.def)}</div></div>
-            <button class="remove" onclick="removeWord('${w.id}')">✕</button>
-          </div>`).join('') + `</div>`}
+        `<div class="word-list">` + pool.map(w => wordRowHtml(w, false)).join('') + `</div>`}
     </div>
   `;
 }
@@ -2263,6 +2336,8 @@ window.handleCreateAdd = handleCreateAdd;
 window.onTopicSelectChange = onTopicSelectChange;
 window.studyDraftSet = studyDraftSet;
 window.removeWord = removeWord;
+window.startEditWord = startEditWord; window.cancelEditWord = cancelEditWord; window.saveEditWord = saveEditWord;
+window.handleEditImageSelect = handleEditImageSelect; window.clearEditImage = clearEditImage;
 window.openTopic = openTopic;
 window.studyTopicPool = studyTopicPool;
 window.openGamePicker = openGamePicker;
@@ -2299,7 +2374,14 @@ window.state = state;
 initAuth();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => reg.update()).catch(() => {});
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return; reloaded = true;
+      // reload only when nothing is half-typed
+      const typing = document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName);
+      if (!typing && (!window.state || window.state.view !== 'session')) location.reload();
+    });
   });
 }
 

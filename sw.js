@@ -1,7 +1,7 @@
 // Minimal service worker: caches the app shell so it opens fast and
 // works offline for reviewing words you've already loaded once.
 // Data itself (Supabase) still needs a connection to sync.
-const CACHE_NAME = 'dogear-v1';
+const CACHE_NAME = 'dogear-v2';
 const SHELL_FILES = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -21,9 +21,16 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Network-first for Supabase API calls, cache-first for the app shell.
-  if (event.request.url.includes('supabase.co')) return;
+  const req = event.request;
+  if (req.method !== 'GET' || req.url.includes('supabase.co')) return;
+  // Network-first: always try for the newest version, fall back to cache only when offline.
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(req, { cache: 'no-cache' }).then((res) => {
+      if (res && res.ok && new URL(req.url).origin === self.location.origin) {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((c) => c.put(req, copy));
+      }
+      return res;
+    }).catch(() => caches.match(req))
   );
 });
