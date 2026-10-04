@@ -1,6 +1,6 @@
 {
-  "name": "WordNest",
-  "short_name": "WordNest",
+  "name": "Dogear",
+  "short_name": "Dogear",
   "description": "A desk for your words — ADHD-friendly vocabulary learning",
   "start_url": "./index.html",
   "display": "standalone",

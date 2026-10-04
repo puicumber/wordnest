@@ -1,7 +1,7 @@
 // Minimal service worker: caches the app shell so it opens fast and
 // works offline for reviewing words you've already loaded once.
 // Data itself (Supabase) still needs a connection to sync.
-const CACHE_NAME = 'wordnest-v1';
+const CACHE_NAME = 'dogear-v1';
 const SHELL_FILES = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', (event) => {
